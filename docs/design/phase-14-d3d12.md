@@ -1,0 +1,240 @@
+# Phase 14 — Direct3D 12 backend
+
+Date: 2026-10-26
+Status: approved (increments land one at a time)
+Related: ADR 0017 (D3D12 backend), ADR 0013 (RHI object model), ADR 0016
+(command recording), [`cyber_rhi` contract](../../engines/cyber_rhi/docs/MODULE.md),
+[Phase 13 design note](phase-13-commands-sync.md)
+
+## What this phase builds
+
+The first backend that drives hardware. Phases 10 to 13 defined an interface and
+proved it against a backend that validates but renders nothing; Phase 14 has to
+prove the same interface can carry real work, on a real API, without the
+interface changing shape to suit that API.
+
+The done-when line is two images: a colored triangle and a textured rotating
+cube, rendered through the RHI on D3D12, matching what `cyber_software_renderer`
+produces within a recorded tolerance. That comparison is the point of the phase:
+the software renderer is the reference implementation of the engine's
+conventions, so a GPU image that disagrees is either a convention bug or a
+backend bug, and the difference image says which.
+
+## What it deliberately leaves out
+
+- **No mesh shaders, sparse resources, or bindless arrays.** They are optional
+  features on the RHI's capability list and Phase 15 onward can add them without
+  changing the object model.
+- **No GPU memory allocator.** Every resource here gets its own heap; Phase 15
+  replaces that with sub-allocation and aliasing.
+- **No validation layer.** The debug layer's messages are surfaced and treated as
+  failures, but the RHI-level checks that survive a release build are Phase 15.
+- **No async pipeline compilation.** Pipeline creation blocks, as it does in the
+  null backend; Phase 17 moves it to the job system.
+- **No shader reflection.** Layouts stay hand-written until Phase 17 derives them
+  from the compiler.
+
+## Interfaces it touches
+
+`cyber/rhi/d3d12.h` is the only new public header: `IsD3D12CompiledIn()` and
+`D3D12Backend()`. Everything else this phase needs already exists — the `Backend`
+table, `DeviceInterface`, the recording API, and the resource descriptions.
+Nothing in `include/cyber/rhi/` except this one header changes, which is the
+strongest evidence that the Phase 10 boundary was drawn in the right place.
+
+The backend's sources live in `engines/cyber_rhi/src/d3d12/`, the only directory
+in the renderer that includes `d3d12.h` or `dxgi*.h`.
+
+## Design
+
+### Increments
+
+The phase lands in increments, each one committed with its own tests. The table
+records what has actually landed, which is the only thing a reader should trust:
+the plan and the delivery drifted by one increment when resources and shaders
+grew larger than the note first estimated.
+
+| Increment | Contents | Evidence | Status |
+|---|---|---|---|
+| 1. Adapters | DXGI factory, hardware adapters, WARP last, `Backend` entry point | `rhi_d3d12_adapters` | landed |
+| 2. Device | `D3D12CreateDevice`, three queues, timeline fences, `Capabilities` | `rhi_d3d12_device` | landed |
+| 3. Resources | Buffers, textures, views, samplers, barriers, staging | `rhi_d3d12_resources` | landed |
+| 4. Shaders and binding | `D3DCompile`, descriptor tables, root signatures, pipeline layouts | `rhi_d3d12_binding`, 7 cases | landed |
+| 5. Pipelines | Graphics and compute PSOs, full state translation, `ID3D12PipelineLibrary` caches | `rhi_d3d12_pipelines`, 6 cases | landed |
+| 6. Recording, submission, presentation | `CommandListInterface` over a real list, `submit` with waits and signals, a `DXGI` flip-model swapchain | `rhi_d3d12_commands`, 5 cases (lifecycle, refusals, an upload round trip, a colored triangle read back from the attachment it was drawn into, and a sampling frame that leaves the debug layer silent) | landed |
+| 7. Reference images | A triangle and a textured cube on the GPU, compared against `cyber_software_renderer` | `backend_compare` (cross-module, under `tests/integration/`), the four images under `docs/reports/images/`, and the tolerance recorded in the test | landed |
+
+Increment 6 took two fixes the increment before it could not have caught, both found
+by the debug layer rather than by a test that passed: the command list never had
+its pipeline state set, so a draw recorded and submitted and rasterized nothing,
+and a bind group read its descriptors back out of a shader-visible heap, which
+Direct3D 12 refuses because that heap is write-combined for the CPU. Both now
+have a regression test (`d3d12_commands_draw_a_colored_triangle` and
+`d3d12_commands_leave_the_debug_layer_silent`), and the second is what turns any
+future debug-layer message into a failing test rather than a line in a log.
+
+### Decisions this phase made that the rest of the renderer depends on
+
+- **A shader input is its location.** Direct3D 12 matches a vertex input by
+  semantic name and index, so location `N` maps to `TEXCOORD` with index `N`.
+  The Phase 16 HLSL generator emits the same names, which keeps a vertex layout
+  independent of the shader language.
+- **A vertex attribute is not a texel.** `R32G32B32Float` has a real
+  `DXGI_FORMAT_R32G32B32_FLOAT` and the input assembler accepts it, while every
+  texel path refuses it. The backend therefore has two conversions,
+  `ToVertexFormat` and `ToDxgiFormat`, instead of one that lies in one direction.
+- **One descriptor table per bind-group slot.** Slot `S` becomes register space
+  `S`, so a shader written against any layout still works. Push constants follow
+  the tables as one 32-bit-constant range.
+- **Persistence is the API's own.** A pipeline cache is an
+  `ID3D12PipelineLibrary`; a description that is already stored is loaded instead
+  of compiled again, and seed bytes the device cannot use are ignored rather than
+  rejected, which is what the contract requires.
+- **A descriptor is written where it is used.** A bind group writes its own view
+  and sampler descriptors into its block of the shader-visible heap and copies
+  none from anywhere: Direct3D 12 treats a shader-visible heap as write-only for
+  the CPU, so reading one back is invalid, and a copied descriptor is a second
+  place a view can go stale. The API's own `CopyDescriptors` path is therefore
+  unused, and the CPU staging heap this note first planned is not needed.
+- **A redundant barrier records nothing.** `Barrier` compares each entry against
+  the state the resource's tracking already holds and skips the ones that already
+  match. The alternative is worse than doing nothing: Direct3D 12 rejects a
+  transition whose two states are equal, which fails the whole command list at
+  `Close` with a message that names neither the resource nor the caller.
+
+### Adapter discovery
+
+`enumerateAdapters` is a pure function of the machine: create a factory, walk
+`EnumAdapters1` up to a bounded cap, skip software entries, then append
+`EnumWarpAdapter` last, release everything. No cached factory, no singleton, no
+teardown. The contract is "write what fits, return the total", which the test
+exercises with a zero-capacity query and a one-entry span.
+
+### The mapping
+
+Every RHI concept has exactly one D3D12 counterpart. This table is the contract
+the backend is written against, and a row with no counterpart is a design bug to
+resolve here rather than in the backend.
+
+| RHI | D3D12 | Notes |
+|---|---|---|
+| `Backend::enumerateAdapters` | `IDXGIFactory4::EnumAdapters1` + `EnumWarpAdapter` | WARP appended last. |
+| `AdapterInfo::dedicatedVideoMemoryBytes` | `DXGI_ADAPTER_DESC1::DedicatedVideoMemory` | 0 for WARP. |
+| `Device` | `ID3D12Device` | Feature level from `D3D12CreateDevice`, reported through `Capabilities`. |
+| `QueueKind::Graphics` | `D3D12_COMMAND_LIST_TYPE_DIRECT` + a queue | One queue per class, aliased when the adapter has fewer. |
+| `QueueKind::Compute` | `D3D12_COMMAND_LIST_TYPE_COMPUTE` | |
+| `QueueKind::Copy` | `D3D12_COMMAND_LIST_TYPE_COPY` | |
+| `FenceHandle` | `ID3D12Fence` | Timeline semantics are native: `Signal`/`SetEventOnCompletion`. |
+| `BufferHandle` | `ID3D12Resource` (`D3D12_RESOURCE_DIMENSION_BUFFER`) | `HostVisible` = `UPLOAD`, `Readback` = `READBACK`, else `DEFAULT`. |
+| `TextureHandle` | `ID3D12Resource` | Row pitch aligned to 256 bytes for uploads. |
+| `ViewHandle` | A descriptor in a shader-visible heap | A bind group writes its own descriptor into its block of that heap; nothing is copied out of it. |
+| `SamplerHandle` | A sampler descriptor in the shader-visible sampler heap | Also written directly into the bind group's block. |
+| `BindGroupLayoutDesc` | Root signature parameter list | Four slots = four descriptor tables plus root constants. |
+| `PushConstantRange` | `D3D12_ROOT_CONSTANTS` | Four ranges maximum, matching Vulkan. |
+| `GraphicsPipelineDesc` | `D3D12_GRAPHICS_PIPELINE_STATE_DESC` | Blend, depth, rasterizer, and input layout map field for field. |
+| `CommandList` | `ID3D12GraphicsCommandList` + allocator | One allocator per frame in flight, reset by the frame ring. |
+| `RenderPassDesc` | `OMSetRenderTargets` + `ClearRenderTargetView`/`ClearDepthStencilView` | Load and store ops are explicit barriers plus clears. |
+| `ResourceState` | `D3D12_RESOURCE_STATES` | One to one, including `PRESENT` and `RENDER_TARGET`. |
+| `Barrier` | `D3D12_RESOURCE_BARRIER` | Transition, aliasing, and UAV barriers; enhanced barriers are Phase 15. |
+| `SwapChain` | `IDXGISwapChain3` | Flip model, `CreateSwapChainForHwnd`; images are `RENDER_TARGET` then `PRESENT`. |
+| `PresentMode::Fifo` | `DXGI_SWAP_EFFECT_FLIP_DISCARD` with vsync | `Mailbox` maps to `DXGI_PRESENT_ALLOW_TEARING`. |
+| `SubmitDesc` | `ExecuteCommandLists` + `Signal` | Wait values become `SetEventOnCompletion` on the CPU before the call. |
+| `RetirementQueue` | No counterpart | The fence value the RHI already tracks is what the backend waits on. |
+
+Two rows deserve a note. **Render-pass load and store ops** have no D3D12 call:
+`LoadOp::Clear` becomes a clear after the transition, `LoadOp::Load` becomes a
+transition that preserves contents, and `StoreOp::DontCare` becomes a
+`DISCARD`-hinted transition. The RHI keeps the abstract operation because Vulkan
+and WebGPU do have it, and the mapping is the backend's job. **Vertex attribute
+locations** become `SV_Position`-relative `POSITION`, `TEXCOORDn`, and
+`COLORn` semantics through the Phase 16 HLSL generator; locations are what the
+RHI describes and semantics are what D3D12 needs.
+
+### Conventions at the edge
+
+The RHI's conventions are the engine's, not the API's: +Y up in clip space 0..1
+reverse-Z, top-left texture origin, right-handed view, column-major matrices.
+D3D12 disagrees on two of them — its depth range is 0..1 but it expects a
+left-handed view by default and its texture origin is top-left — so the backend
+uses the predicates in `conventions.h` rather than its own answers. The
+projection matrix carries the reverse-Z mapping; nothing in the backend negates a
+matrix.
+
+### Debug layer
+
+The debug layer and GPU-based validation are enabled from the first line of
+device code, before the device exists, because that is the earliest the device
+records messages. The layer's queue has no reader of its own, so the backend
+drains it when the device is destroyed and reports what it found on the `Rhi`
+log channel: `CORRUPTION` and `ERROR` at error level, `WARNING` at warning level,
+and the layer's informational notes not at all. Two messages are filtered out at
+the queue because this backend provokes them by design — the startup banner that
+announces GPU-based validation, and the note that a cleared color target carries
+no optimized clear value, which the RHI cannot satisfy because it takes the clear
+color from the pass rather than the texture.
+
+That report is what makes "treat any message as a test failure" executable:
+`d3d12_commands_leave_the_debug_layer_silent` installs a sink on the channel,
+records a frame that uploads, samples a texture and draws, destroys the device,
+and fails if a single record arrived. The three defects this phase's last
+increment found were all found that way, and each one is now covered by a test.
+
+A depth target does carry an optimized clear value — the reverse-Z far plane,
+which is the value the pass clears to — so the warning below applies to color
+targets only.
+
+## Alternatives considered
+
+- **Vulkan first.** Rejected: the target platform is Windows, D3D12's explicit
+  model is the closest to what Phase 10 to 13 already describe, and the debug
+  layer is the best available tool for a first backend.
+- **A minimal backend that renders the triangle and nothing else.** Rejected: it
+  would prove the interface can carry a draw, not that it can carry a frame, and
+  the cube's image comparison is what catches a texture-origin or a reverse-Z
+  mistake.
+- **Throwing the interface away and re-deriving it from D3D12.** Rejected: that
+  is what ADR 0013 exists to prevent, and the mapping table is the evidence that
+  no entry needs to change.
+- **Rendering to an offscreen texture instead of a swapchain.** Rejected as the
+  only path: the image comparison needs a deterministic target, so the comparison
+  runs offscreen, while the swapchain is exercised by its own conformance test
+  and by the frame-ring and presentation cases in `rhi_d3d12_commands`.
+
+## Risks
+
+- **Feature-level divergence.** A 12_0 adapter lacks `SV_Barycentrics` and some
+  formats; the backend queries `CheckFeatureSupport` rather than assuming 12_1.
+- **Descriptor-heap pressure.** A ring per frame in flight is the simplest correct
+  design, but a frame that binds more descriptors than the ring holds stalls. The
+  ring's size is a limit in `Capabilities`, and exhaustion is a reported error.
+- **The upload ring's coherency.** `UPLOAD` heaps are write-combined, so a read
+  back through the same memory is slow and wrong; the tests read back through a
+  `READBACK` resource instead.
+- **WARP in CI is slow.** The image comparison on WARP renders one 2048x2048
+  frame per side — the 4x supersampled render ADR 0012's caller-side path
+  specifies — and box-filters it to the 512x512 image that is compared and
+  written, so the cost is bounded by that fixed size and the tolerance is
+  recorded with the reference.
+
+## Test plan
+
+| Test | Proves |
+|---|---|
+| `rhi_d3d12_adapters` | Adapter enumeration, WARP last, the short-span contract, and that an incomplete table is a reported error. |
+| `rhi_d3d12_device` | Device creation, three queues, timeline fences, capabilities, object naming, and the stale-handle answers. |
+| `rhi_d3d12_resources` | Buffers, textures, views, samplers, host-visible writes and readback reads, and per-subresource state across a barrier. |
+| `rhi_d3d12_binding` | HLSL compilation, bind group layouts and groups filling one contiguous descriptor block, and root signatures built from pipeline layouts. |
+| `rhi_d3d12_pipelines` | Every `GraphicsPipelineDesc` field reaching `D3D12_GRAPHICS_PIPELINE_STATE_DESC`, compute state, and pipeline-library caches. |
+| `rhi_d3d12_commands` | The recording state machine, submission with fences, host upload through a staging buffer, the triangle's pixel read back out of the attachment, and a sampling frame the debug layer has nothing to say about. |
+| `backend_compare` | The triangle and the cube each match the software renderer within the recorded tolerance, on the adapter the test selects. |
+
+## Sources
+
+- Microsoft, *Direct3D 12 programming guide*: adapters, devices, queues, fences,
+  descriptors, heaps, and the swapchain.
+- Microsoft, *Understanding the D3D12 debug layer*: GPU-based validation and
+  DRED.
+- Microsoft, *Programming guide for HLSL*: semantics, the compiler targets.
+- Microsoft, *DXGI 1.6* and *flip-model swap chains*.
+- Khronos, *Vulkan 1.3 specification*: read for the places where the two APIs
+  disagree, so the interface keeps the union of what both can express.

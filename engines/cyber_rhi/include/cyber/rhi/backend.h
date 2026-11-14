@@ -1,0 +1,353 @@
+#pragma once
+
+#include <cyber/core/error.h>
+#include <cyber/core/result.h>
+#include <cyber/core/types.h>
+#include <cyber/memory/allocator.h>
+#include <cyber/memory/dynamic_array.h>
+#include <cyber/memory/span.h>
+#include <cyber/rhi/binding.h>
+#include <cyber/rhi/buffer.h>
+#include <cyber/rhi/capabilities.h>
+#include <cyber/rhi/command_list.h>
+#include <cyber/rhi/descriptors.h>
+#include <cyber/rhi/handle.h>
+#include <cyber/rhi/memory.h>
+#include <cyber/rhi/pipeline.h>
+#include <cyber/rhi/resource_state.h>
+#include <cyber/rhi/sampler.h>
+#include <cyber/rhi/shader.h>
+#include <cyber/rhi/submission.h>
+#include <cyber/rhi/swapchain.h>
+#include <cyber/rhi/texture.h>
+#include <cyber/rhi/timestamp.h>
+
+namespace cyber::rhi
+{
+
+using cyber::core::Error;
+using cyber::core::Result;
+using cyber::core::Status;
+
+// A backend is a table of function pointers, not a class hierarchy. The reasons
+// are in ADR 0013: the runtime has RTTI disabled, the Phase 25 plugin ABI is a
+// C table, and a missing method is visible in a diff when the table is written
+// out by hand.
+//
+// A backend never allocates without an explicit allocator, never throws, and
+// never keeps global mutable state. Everything a backend owns hangs off the
+// `internal` pointer of a device, so two devices on the same backend share
+// nothing.
+
+struct DeviceInterface;
+
+// What a backend hands back when a device is created. Both members are required.
+struct DeviceCreation
+{
+    // Per-device function table, with static lifetime.
+    const DeviceInterface* interface = nullptr;
+    // Backend-private device state, owned by the device and released by
+    // `Backend::destroyDevice`.
+    void* internal = nullptr;
+};
+
+// Which object an `ObjectRef` names for the debug-name query. Every kind here
+// has a descriptor with an optional caller-supplied label the backend forwards
+// to the driver; a kind the backend cannot name with the driver's own mechanism
+// (a view, a sampler, or a bind group, none of which is a single D3D12 object)
+// answers an unnamed `ObjectNameInfo` honestly rather than inventing a name.
+enum class ObjectKind : u8
+{
+    Buffer,
+    Texture,
+    TextureView,
+    Sampler,
+    Shader,
+    BindGroup,
+    PipelineLayout,
+    Pipeline,
+    PipelineCache,
+    Fence,
+    TimestampQueryHeap,
+    CommandList,
+};
+
+// A handle generalized across kinds, for the one debug surface that needs it:
+// the debug-name query. `packed` is the lossless form `PackHandle` produces for
+// any typed handle, so a caller converts a `BufferHandle` or a `FenceHandle`
+// with one call and the read-back unpacks it without knowing the tag.
+struct ObjectRef
+{
+    ObjectKind kind = ObjectKind::Buffer;
+    // `PackHandle` form: index in the high half, generation in the low half.
+    u64 packed = 0;
+};
+
+// The debug name a driver shows for one object, copied. 128 bytes is also the
+// conversion buffer the backend's own naming path uses, so a name a backend can
+// set is one it can read back whole; anything longer was never fully named.
+struct ObjectNameInfo
+{
+    // False for a kind with no nameable driver object, an unnamed object, and a
+    // stale handle. The three are indistinguishable by design: the driver keeps
+    // no name for any of them, and inventing a difference would be a lie.
+    bool named = false;
+    // Byte length of `name`, without the terminator. 0 when `named` is false.
+    // The name is UTF-8, which is every RHI descriptor label's own form.
+    u32 length = 0;
+    // The name, NUL-terminated. Truncated to fit; the drop is visible because
+    // `length` counts what `name` holds, not what the caller asked for.
+    char name[128]{};
+};
+
+// Per-device function table. Every method is required: a null entry is a
+// backend bug that device creation rejects with `ErrorCode::Internal` before a
+// caller can reach a half-implemented backend.
+struct DeviceInterface
+{
+    // Capabilities of this device. Must be safe to call from any thread and must
+    // not allocate. `internal` is never null.
+    Capabilities (*capabilities)(const void* internal) noexcept;
+    // Statistics of the GPU memory the device has allocated (ADR 0018), per
+    // memory class. Must be safe to call from any thread, must not allocate, and
+    // must hold no lock the caller can observe. A backend that does not drive a
+    // heap reports a zeroed value. `internal` is never null.
+    MemoryStats (*memoryStats)(const void* internal) noexcept;
+    // Handle of the queue for a class, or an invalid handle when the backend has
+    // none. A kind outside the enum is out of range and yields an invalid handle.
+    QueueHandle (*queue)(const void* internal, QueueKind kind) noexcept;
+    // Creates a fence. `out` must be non-null.
+    Status<Error> (*createFence)(void* internal, const FenceDesc& desc, FenceHandle* out) noexcept;
+    // Destroys a fence. A stale handle is `ErrorCode::InvalidArgument`.
+    Status<Error> (*destroyFence)(void* internal, FenceHandle fence) noexcept;
+    // Advances a fence's timeline. Values below the current value are ignored;
+    // the timeline never goes backwards.
+    Status<Error> (*signalFence)(void* internal, FenceHandle fence, u64 value) noexcept;
+    // Waits until the fence reaches `value`. Returns `ErrorCode::NotFound` on
+    // timeout and `ErrorCode::InvalidArgument` for a stale handle.
+    Status<Error> (*waitFence)(void* internal, FenceHandle fence, u64 value,
+                               u64 timeoutNanoseconds) noexcept;
+    // Current value of a fence, or 0 for a stale handle.
+    u64 (*fenceValue)(const void* internal, FenceHandle fence) noexcept;
+    // Creates a timestamp query heap.
+    Status<Error> (*createTimestampQueryHeap)(void* internal, const TimestampQueryHeapDesc& desc,
+                                              TimestampQueryHeapHandle* out) noexcept;
+    // Destroys a timestamp query heap.
+    Status<Error> (*destroyTimestampQueryHeap)(void* internal,
+                                               TimestampQueryHeapHandle heap) noexcept;
+    // Copies resolved timestamps to the caller after `completionFence` has
+    // reached `completionValue`. The output span must hold `queryCount` values.
+    Status<Error> (*readTimestamps)(void* internal, TimestampQueryHeapHandle heap, u32 firstQuery,
+                                    u32 queryCount, FenceHandle completionFence,
+                                    u64 completionValue, memory::Span<u64> out) noexcept;
+    // Ticks per second for this queue, or zero when timestamp queries are not
+    // supported.
+    u64 (*timestampFrequency)(const void* internal, QueueKind queue) noexcept;
+    // Logs and returns the count of live resources owned by the device.
+    u32 (*reportLeaks)(const void* internal) noexcept;
+    // Blocks until the device has finished all submitted work. Phase 10 has no
+    // submission, so every backend completes immediately.
+    Status<Error> (*waitIdle)(void* internal) noexcept;
+
+    // Creates a buffer and writes its handle to `out`, which must be non-null.
+    // A descriptor no backend can create is `ErrorCode::InvalidArgument`; a
+    // value above `Limits` is `ErrorCode::OutOfRange`.
+    Status<Error> (*createBuffer)(void* internal, const BufferDesc& desc,
+                                  BufferHandle* out) noexcept;
+    // Releases a buffer and invalidates its handle. A stale handle is
+    // `ErrorCode::InvalidArgument`.
+    Status<Error> (*destroyBuffer)(void* internal, BufferHandle buffer) noexcept;
+    // Reports a buffer's size, stride, and usage, or a zeroed value with
+    // `valid` false for a stale handle.
+    BufferInfo (*bufferInfo)(const void* internal, BufferHandle buffer) noexcept;
+    // Copies `bytes` into a `HostVisible` buffer at `offset`. A buffer without
+    // that usage, a null span with a non-zero size, or an offset past the end is
+    // `ErrorCode::InvalidArgument`; a range that overflows is
+    // `ErrorCode::OutOfRange`.
+    Status<Error> (*writeBuffer)(void* internal, BufferHandle buffer, u64 offset,
+                                 memory::Span<const memory::Byte> bytes) noexcept;
+    // Copies bytes out of a `Readback` buffer at `offset`.
+    Status<Error> (*readBuffer)(void* internal, BufferHandle buffer, u64 offset,
+                                memory::Span<memory::Byte> bytes) noexcept;
+    // State of a whole buffer, or `ResourceState::Undefined` for a stale handle.
+    ResourceState (*bufferState)(const void* internal, BufferHandle buffer) noexcept;
+    // Creates a texture and writes its handle to `out`, which must be non-null.
+    Status<Error> (*createTexture)(void* internal, const TextureDesc& desc,
+                                   TextureHandle* out) noexcept;
+    // Releases a texture, invalidates its handle, and retires every view of it.
+    Status<Error> (*destroyTexture)(void* internal, TextureHandle texture) noexcept;
+    // Reports a texture's shape and size, or a zeroed value for a stale handle.
+    TextureInfo (*textureInfo)(const void* internal, TextureHandle texture) noexcept;
+    // Creates a view over a live texture. A stale texture, a format that is not
+    // view-compatible, or a range outside the texture is
+    // `ErrorCode::InvalidArgument`.
+    Status<Error> (*createTextureView)(void* internal, const TextureViewDesc& desc,
+                                       TextureViewHandle* out) noexcept;
+    // Releases a view and invalidates its handle. The texture stays alive.
+    Status<Error> (*destroyTextureView)(void* internal, TextureViewHandle view) noexcept;
+    // Reports a view's format, shape, and range, or a zeroed value for a stale
+    // handle.
+    TextureViewInfo (*textureViewInfo)(const void* internal, TextureViewHandle view) noexcept;
+    // State of one subresource, or `ResourceState::Undefined` when the handle or
+    // the subresource is invalid.
+    ResourceState (*textureState)(const void* internal, TextureHandle texture, u32 mipLevel,
+                                  u32 arrayLayer) noexcept;
+    // Creates a sampler and writes its handle to `out`, which must be non-null.
+    Status<Error> (*createSampler)(void* internal, const SamplerDesc& desc,
+                                   SamplerHandle* out) noexcept;
+    // Releases a sampler and invalidates its handle.
+    Status<Error> (*destroySampler)(void* internal, SamplerHandle sampler) noexcept;
+    // Transitions every barrier in both spans. Each barrier is checked against
+    // tracked state before any of them is applied, so a batch with one bad
+    // barrier changes nothing and reports `ErrorCode::InvalidArgument`.
+    Status<Error> (*transition)(void* internal, memory::Span<const BufferBarrier> buffers,
+                                memory::Span<const TextureBarrier> textures) noexcept;
+
+    // Creates a shader module and writes its handle to `out`, which must be
+    // non-null.
+    Status<Error> (*createShader)(void* internal, const ShaderDesc& desc,
+                                  ShaderHandle* out) noexcept;
+    // Releases a shader module. A stale handle is `ErrorCode::InvalidArgument`.
+    Status<Error> (*destroyShader)(void* internal, ShaderHandle shader) noexcept;
+    // Reports a module's stage, format, and code size, or a zeroed value for a
+    // stale handle.
+    ShaderInfo (*shaderInfo)(const void* internal, ShaderHandle shader) noexcept;
+    // Creates a bind group layout.
+    Status<Error> (*createBindGroupLayout)(void* internal, const BindGroupLayoutDesc& desc,
+                                           BindGroupLayoutHandle* out) noexcept;
+    // Releases a bind group layout. Groups created from it stay valid: a group
+    // copies what it needs when it is created.
+    Status<Error> (*destroyBindGroupLayout)(void* internal, BindGroupLayoutHandle layout) noexcept;
+    // Creates a bind group from a live layout and matching resources.
+    Status<Error> (*createBindGroup)(void* internal, const BindGroupDesc& desc,
+                                     BindGroupHandle* out) noexcept;
+    // Replaces every resource in a live group. The backend validates the full
+    // replacement before changing the group.
+    Status<Error> (*updateBindGroup)(void* internal, BindGroupHandle group,
+                                     memory::Span<const BindingResource> resources) noexcept;
+    // Releases a bind group.
+    Status<Error> (*destroyBindGroup)(void* internal, BindGroupHandle group) noexcept;
+    // Reports a group's layout and resource count, or a zeroed value for a stale
+    // handle.
+    BindGroupInfo (*bindGroupInfo)(const void* internal, BindGroupHandle group) noexcept;
+    // Creates a pipeline layout from live group layouts.
+    Status<Error> (*createPipelineLayout)(void* internal, const PipelineLayoutDesc& desc,
+                                          PipelineLayoutHandle* out) noexcept;
+    // Releases a pipeline layout. Pipelines created from it stay valid.
+    Status<Error> (*destroyPipelineLayout)(void* internal, PipelineLayoutHandle layout) noexcept;
+    // Creates a graphics pipeline from a complete description.
+    Status<Error> (*createGraphicsPipeline)(void* internal, const GraphicsPipelineDesc& desc,
+                                            PipelineHandle* out) noexcept;
+    // Releases a graphics pipeline.
+    Status<Error> (*destroyGraphicsPipeline)(void* internal, PipelineHandle pipeline) noexcept;
+    // Creates a compute pipeline.
+    Status<Error> (*createComputePipeline)(void* internal, const ComputePipelineDesc& desc,
+                                           PipelineHandle* out) noexcept;
+    // Releases a compute pipeline.
+    Status<Error> (*destroyComputePipeline)(void* internal, PipelineHandle pipeline) noexcept;
+    // Creates an empty pipeline cache, optionally seeded with data a previous
+    // run saved. Bytes that are not understood are ignored, as D3D12 and Vulkan
+    // both require.
+    Status<Error> (*createPipelineCache)(void* internal, const PipelineCacheDesc& desc,
+                                         PipelineCacheHandle* out) noexcept;
+    // Releases a pipeline cache.
+    Status<Error> (*destroyPipelineCache)(void* internal, PipelineCacheHandle cache) noexcept;
+    // Appends the cache's saved bytes to `out`, which must be non-null and is
+    // used for the allocation. A backend with nothing to save appends nothing.
+    Status<Error> (*pipelineCacheBytes)(const void* internal, PipelineCacheHandle cache,
+                                        memory::Allocator& allocator,
+                                        memory::DynamicArray<memory::Byte>* out) noexcept;
+    // Reports a pipeline's kind and description hash, or a zeroed value for a
+    // stale handle.
+    PipelineInfo (*pipelineInfo)(const void* internal, PipelineHandle pipeline) noexcept;
+
+    // Creates a command list for a queue class. `out` and `creation` must be
+    // non-null. A queue class the device does not have is
+    // `ErrorCode::InvalidArgument`.
+    Status<Error> (*createCommandList)(void* internal, const CommandListDesc& desc,
+                                       CommandListHandle* out,
+                                       CommandListCreation* creation) noexcept;
+    // Releases a command list and invalidates its handle.
+    Status<Error> (*destroyCommandList)(void* internal, CommandListHandle list) noexcept;
+    // Runs a batch of lists on a queue, applying its GPU waits first and
+    // reaching its signals last. A list that is not ended, or that was recorded
+    // for another queue class, is `ErrorCode::InvalidArgument`.
+    Status<Error> (*submit)(void* internal, const SubmitDesc& desc) noexcept;
+    // Reports how many submissions a queue has accepted and the highest value
+    // its last submission signalled. Zeroed for a queue class the device has no
+    // queue for.
+    SubmissionInfo (*submissionInfo)(const void* internal, QueueKind kind) noexcept;
+
+    // Creates a swapchain over `desc.surface`. `out` and `creation` must be
+    // non-null. A description no backend can present is
+    // `ErrorCode::InvalidArgument`; a present mode the adapter cannot serve is
+    // `ErrorCode::Unsupported`.
+    Status<Error> (*createSwapChain)(
+        void* internal, const SwapChainDesc& desc, SwapChainHandle* out,
+        SwapChainCreation* creation) noexcept;  // Releases a swapchain and its images. A caller
+                                                // that has an image acquired
+    // may still destroy the swapchain; the image is simply never presented.
+    Status<Error> (*destroySwapChain)(void* internal, SwapChainHandle swapchain) noexcept;
+
+    // Reports the debug name one object shows in a capture, so a leak report,
+    // a capture review, or a test can read back what a resource's label became.
+    // The driver's own name slot is the source of truth: a read-back that
+    // returned the backend's bookkeeping would never notice a lost step, so
+    // what this entry answers is what the driver would show. Must not allocate
+    // and must hold no lock the caller can observe, matching `pipelineState`.
+    // A kind with no nameable driver object (a view, a sampler, or a bind group
+    // in the D3D12 backend), an unnamed object, and a stale handle all report
+    // `named == false`; the concept does not exist for them.
+    ObjectNameInfo (*objectName)(const void* internal, const ObjectRef& object) noexcept;
+};
+
+// A graphics backend. Obtained from the backend's own entry point (for example
+// `NullBackend()`), never constructed by a caller.
+struct Backend
+{
+    // Which API this backend drives.
+    BackendKind kind = BackendKind::Null;
+    // Human-readable name. Static lifetime.
+    const char* name = "unknown";
+    // API version the backend targets, or 0 when the concept does not apply.
+    u32 apiVersion = 0;
+    // Per-device table this backend implements. Static lifetime.
+    const DeviceInterface* interface = nullptr;
+    // Writes up to `out.Size()` adapters and returns the number written. The
+    // return value may exceed the span for a backend with more adapters than fit,
+    // so a caller can size its buffer and call again. Must not allocate.
+    u32 (*enumerateAdapters)(AdapterInfo* out, u32 capacity) noexcept;
+    // Creates a device on adapter `desc.adapterIndex`, using `allocator` for
+    // backend-owned bookkeeping. Returns `ErrorCode::Internal` when a required
+    // table entry is missing or the device cannot be created, and
+    // `ErrorCode::OutOfRange` for an adapter index that does not exist.
+    Result<DeviceCreation, Error> (*createDevice)(const DeviceDesc& desc,
+                                                  memory::Allocator& allocator) noexcept;
+    // Releases everything `createDevice` produced, after calling `waitIdle`.
+    // Never null for a valid backend.
+    void (*destroyDevice)(void* internal) noexcept;
+};
+
+// Lists the adapters a backend exposes into `out`, returning the number written.
+// A null backend or a null enumerator returns 0. This is a thin convenience over
+// `Backend::enumerateAdapters` that cannot overflow the span.
+[[nodiscard]] inline u32 EnumerateAdapters(const Backend& backend,
+                                           memory::Span<AdapterInfo> out) noexcept
+{
+    if (backend.enumerateAdapters == nullptr)
+    {
+        return 0;
+    }
+    // An empty span is a valid query: it asks for the count without writing a
+    // single adapter.
+    return backend.enumerateAdapters(out.Data(), static_cast<u32>(out.Size()));
+}
+
+// The validation backend: it drives no hardware, allocates nothing on a GPU, and
+// checks every call it accepts. Use it for tests, for a headless run, and for
+// comparing an image the GPU produced with one the software renderer produced.
+//
+// The returned pointer has static lifetime and is never null.
+[[nodiscard]] const Backend* NullBackend() noexcept;
+
+}  // namespace cyber::rhi

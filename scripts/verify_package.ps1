@@ -1,0 +1,104 @@
+param(
+    [string]$Preset = 'debug',
+    [string]$Prefix = ''
+)
+
+$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+Set-Location $root
+
+. (Join-Path $PSScriptRoot 'bootstrap.ps1') -Quiet
+
+if ($Preset -eq 'debug-asan') {
+    throw 'ASan runtime is build-local; verify a debug or release package instead.'
+}
+
+$buildDir = Join-Path $root "build/$Preset"
+if (-not (Test-Path $buildDir)) {
+    throw "Build directory not found: $buildDir. Build the preset first."
+}
+
+if (-not $Prefix) {
+    $Prefix = Join-Path $root "build/install-$Preset"
+    if (Test-Path $Prefix) {
+        Remove-Item -Recurse -Force $Prefix
+    }
+}
+$consumerDir = Join-Path $root "build/package-consumer-$Preset"
+if (Test-Path $consumerDir) {
+    Remove-Item -Recurse -Force $consumerDir
+}
+
+$buildType = if ($Preset -eq 'release' -or $Preset -eq 'shipping') {
+    'Release'
+} elseif ($Preset -eq 'profile') {
+    'RelWithDebInfo'
+} else {
+    'Debug'
+}
+
+& cmake --preset $Preset
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& cmake --build --preset $Preset
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& cmake --install $buildDir --prefix $Prefix
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$requiredHeaders = @(
+    'include/cyber/core/version_generated.h',
+    'include/cyber/math/math.h',
+    'include/cyber/math/mat4.h',
+    'include/cyber/math/types.h',
+    'include/cyber/math/vec3.h',
+    'include/cyber/memory/memory.h',
+    'include/cyber/memory/allocator.h',
+    'include/cyber/memory/dynamic_array.h',
+    'include/cyber/memory/string_view.h',
+    'include/cyber/platform/platform.h',
+    'include/cyber/platform/window.h',
+    'include/cyber/platform/present.h',
+    'include/cyber/platform/thread.h',
+    'include/cyber/plugin_host/renderer_plugin.h',
+    'include/cyber/perf/perf.h',
+    'include/cyber/perf/profiler.h',
+    'include/cyber/jobs/jobs.h',
+    'include/cyber/jobs/job_system.h',
+    'include/cyber/scene/mesh.h',
+    'include/cyber/scene/scene.h',
+    'include/cyber/shaders/reflection.h',
+    'include/cyber/renderer/hot_pipeline.h',
+    'include/cyber/renderer/material.h',
+    'include/cyber/renderer/reflected_layout.h',
+    'include/cyber/renderer/render_graph.h',
+    'include/cyber/renderer/render_thread.h',
+    'include/cyber/software/software.h',
+    'include/cyber/software/framebuffer.h',
+    'include/cyber/software/present_target.h',
+    'include/cyber/software/image_io.h',
+    'include/cyber/software/debug_text.h',
+    'include/cyber/software/frame_pacer.h',
+    'include/cyber/software/raster.h',
+    'include/cyber/software/depth_buffer.h',
+    'include/cyber/software/camera.h',
+    'include/cyber/software/pipeline.h',
+    'include/cybergraphics/api.h'
+)
+foreach ($header in $requiredHeaders) {
+    $path = Join-Path $Prefix $header
+    if (-not (Test-Path $path)) {
+        throw "Installed package is missing $header"
+    }
+}
+
+& cmake -S tests/integration/package_consumer -B $consumerDir -G Ninja `
+    "-DCMAKE_BUILD_TYPE=$buildType" "-DCMAKE_PREFIX_PATH=$Prefix"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& cmake --build $consumerDir
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$executable = if ($env:OS -eq 'Windows_NT') { 'consumer.exe' } else { 'consumer' }
+& (Join-Path $consumerDir $executable)
+exit $LASTEXITCODE

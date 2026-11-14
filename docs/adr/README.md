@@ -1,0 +1,61 @@
+# Architecture decision records
+
+An ADR captures a decision that is expensive to reverse, the context that led
+to it, and the consequences. Use one when a future reader would otherwise ask
+"why on earth is it done this way?"
+
+## Index
+
+| ADR | Title | Status |
+|---|---|---|
+| [0000](0000-template.md) | Template | — |
+| [0001](0001-module-architecture.md) | Repository and module architecture | accepted |
+| [0002](0002-math-and-depth-conventions.md) | Math and depth conventions | accepted |
+| [0003](0003-integration-and-packaging.md) | Integration and packaging contract | accepted |
+| [0004](0004-core-primitives-and-test-runner.md) | Core primitive contracts and the project test runner | accepted |
+| [0005](0005-math-representation-and-simd.md) | Math representation, SIMD, and fallibility | accepted |
+| [0006](0006-memory-allocation-and-handles.md) | Memory allocation, containers, and handle lifetime | accepted |
+| [0007](0007-platform-and-job-scheduling.md) | Platform boundary and job scheduling | accepted |
+| [0008](0008-framebuffer-and-present.md) | Framebuffer ownership and the present boundary | accepted |
+| [0009](0009-rasterization-conventions.md) | Rasterization conventions | accepted |
+| [0010](0010-depth-clipping-and-perspective.md) | Depth, clipping, and perspective | accepted |
+| [0011](0011-textures-shaders-and-golden-images.md) | Texture sampling, CPU shader interface, and golden images | accepted |
+| [0012](0012-supersampling-before-multisample-coverage.md) | Supersampling before multisample coverage | accepted |
+| [0013](0013-rhi-object-model.md) | RHI object model, handles, and the backend boundary | accepted |
+| [0014](0014-resource-model.md) | Resource model, format table, and explicit state | accepted |
+| [0015](0015-pipeline-binding-model.md) | Four binding slots, location-based vertex input, and hash-keyed pipelines | accepted |
+| [0016](0016-command-lists-and-synchronization.md) | Recorded command lists, explicit barriers, and timeline submission | accepted |
+| [0017](0017-d3d12-backend.md) | The Direct3D 12 backend: adapter discovery, WARP, and the increment plan | accepted |
+| [0018](0018-gpu-heap-suballocation-and-rhi-validation.md) | GPU heap sub-allocation and one RHI-level validation layer | proposed |
+| [0019](0019-shader-strategy.md) | A typed Cyber shader language that emits HLSL | accepted |
+| [0020](0020-shader-reflection-permutations-and-reload.md) | Compiler-owned reflection, keyword permutations, and renderer-side hot pipelines | accepted |
+| [0021](0021-material-definitions-and-parameter-blocks.md) | Material definitions, instances, and upload ownership | accepted for Phase 18 |
+| [0022](0022-frame-streaming-and-bindless-resources.md) | Frame streaming, dynamic offsets, and bindless tables | accepted for Phase 19 |
+| [0023](0023-render-graph-lifetimes-and-aliasing.md) | Render graph pass liveness and transient aliasing | proposed (owner review pending) |
+| [0024](0024-render-thread-frame-pipeline.md) | Render-thread ownership and bounded frame handoff | proposed (owner review pending) |
+| [0027](0027-environment-map-ownership.md) | Environment-map ownership and borrowed lighting views | proposed (owner review pending) |
+
+Add new records as `NNNN-title.md`, starting at `0001`. Never delete an ADR;
+supersede it with a new one and update the old record's status.
+
+## When to write one
+
+- A public interface or ABI changes.
+- A dependency direction changes.
+- A coordinate, depth, or color convention changes.
+- A backend or platform strategy changes.
+- A third-party exception is considered.
+- A phase chooses between materially different approaches (for example the
+  shader strategy or the GI approach).
+
+## Status values
+
+- `proposed`
+- `accepted`
+- `superseded by NNNN`
+- `rejected`
+
+## Review
+
+An ADR is accepted when the owner has reviewed it and the consequences are
+written down. "We will deal with it later" is not a consequence.

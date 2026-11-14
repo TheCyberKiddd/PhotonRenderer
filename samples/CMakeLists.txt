@@ -1,0 +1,24 @@
+# Runnable samples. Every sample compiles in CI; a sample that needs a window
+# still builds on platforms whose backend returns Unsupported at runtime.
+
+add_subdirectory(00_window)
+add_subdirectory(01_gradient)
+add_subdirectory(02_raster)
+add_subdirectory(03_depth)
+add_subdirectory(04_textured)
+add_subdirectory(04_lighting)
+add_subdirectory(11_reflections)
+add_subdirectory(10_antialiasing)
+add_subdirectory(12_post_process)
+add_subdirectory(13_showcase)
+add_subdirectory(14_global_illumination)
+add_subdirectory(15_gallery)
+
+if(CYBER_RHI_ENABLE_D3D12)
+    add_subdirectory(05_d3d12_markers)
+    add_subdirectory(06_shader_hot_reload)
+    add_subdirectory(07_materials)
+    add_subdirectory(08_frame_streaming)
+    add_subdirectory(09_clustered_lighting)
+    add_subdirectory(17_gpu_driven)
+endif()

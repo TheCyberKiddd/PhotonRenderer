@@ -1,0 +1,36 @@
+include_guard(GLOBAL)
+
+if(CYBER_ENABLE_TSAN AND (CYBER_ENABLE_ASAN OR CYBER_ENABLE_UBSAN))
+    message(FATAL_ERROR "ThreadSanitizer cannot be combined with ASan or UBSan.")
+endif()
+
+if(CYBER_ENABLE_ASAN)
+    add_compile_definitions(CG_ASAN=1)
+    if(MSVC)
+        add_compile_options(/fsanitize=address)
+        add_link_options(/fsanitize=address)
+    else()
+        add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address)
+    endif()
+endif()
+
+if(CYBER_ENABLE_UBSAN)
+    add_compile_definitions(CG_UBSAN=1)
+    if(MSVC)
+        message(FATAL_ERROR "MSVC does not support UndefinedBehaviorSanitizer; use clang on Linux.")
+    endif()
+    # The vptr check needs RTTI type information, but runtime code is built
+    # with -fno-rtti. Keep the rest of UBSan enabled.
+    add_compile_options(-fsanitize=undefined -fno-sanitize=vptr -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=undefined)
+endif()
+
+if(CYBER_ENABLE_TSAN)
+    add_compile_definitions(CG_TSAN=1)
+    if(MSVC)
+        message(FATAL_ERROR "MSVC does not support ThreadSanitizer; use clang on Linux.")
+    endif()
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=thread)
+endif()

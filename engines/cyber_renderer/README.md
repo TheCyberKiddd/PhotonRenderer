@@ -1,0 +1,29 @@
+# cyber_renderer
+
+**Status:** active · **Layer:** 3 · **Kind:** graphics
+
+Phase 17 adds compiler-reflected binding layouts and asynchronous graphics
+pipelines with fallback selection, frame-boundary swaps, and deferred retirement.
+Phase 20 provides a setup/execute render graph with dependency analysis,
+culling, transient aliasing, automatic barriers, and bounded text/DOT
+diagnostics. Phase 32 adds GPU-driven rendering: compute-shader instance
+culling with LOD selection and Hi-Z occlusion, ordered draw compaction, one
+indirect-count draw per frame, GPU cluster light culling, async-compute
+scheduling behind a measured policy, and meshlets with a vertex-pipeline
+fallback.
+
+The binding contract for this module lives in [docs/MODULE.md](docs/MODULE.md).
+Read it before adding code or changing a public header.
+
+## Layout
+
+- `include/cyber/renderer/` — public headers, self-contained.
+- `src/` — private implementation.
+- `tests/` — unit tests owned by this module.
+
+The module is active; its dependencies are limited to the RHI, shader compiler,
+job system, math, memory, and core.
+
+## Roadmap
+
+Phases 17, 18, 19, 20, 21, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 37.

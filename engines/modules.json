@@ -1,0 +1,469 @@
+{
+  "schema": 1,
+  "contracts": [
+    {
+      "name": "cybergraphics_api",
+      "public_api": "include/cybergraphics/",
+      "purpose": "Stable C ABI implemented by every renderer plugin."
+    }
+  ],
+  "modules": [
+    {
+      "name": "cyber_core",
+      "short": "core",
+      "kind": "foundation",
+      "layer": 0,
+      "order": 0,
+      "status": "active",
+      "purpose": "Fixed-width types, assertions, logging, Result, configuration switches, versioning, hashing, and other dependency-free primitives.",
+      "public_api": "include/cyber/core/",
+      "depends": [],
+      "forbidden": ["cyber_platform", "cyber_rhi", "cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "No dependency on any other CyberGraphics module.",
+        "Assertions and logging must not allocate on the failure path.",
+        "Public headers are self-contained and compile on their own."
+      ],
+      "non_goals": [
+        "Containers and allocators (cyber_memory).",
+        "Math types (cyber_math).",
+        "Platform services (cyber_platform).",
+        "Rendering (cyber_rhi, cyber_renderer)."
+      ],
+      "tests": "Unit tests for Result, assertion formatting, log channels and sinks, and version macros.",
+      "budgets": "Assert path: no allocation. Log path: thread-safe and bounded.",
+      "roadmap": [2]
+    },
+    {
+      "name": "cyber_math",
+      "short": "math",
+      "kind": "foundation",
+      "layer": 0,
+      "order": 1,
+      "status": "active",
+      "purpose": "Scalar and SIMD math: vectors, matrices, quaternions, transforms, geometry, color, half floats.",
+      "public_api": "include/cyber/math/",
+      "depends": ["cyber_core"],
+      "forbidden": ["cyber_platform", "cyber_rhi", "cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "Right-handed, +Y up, column vectors, column-major matrices, 0..1 reverse-Z.",
+        "Scalar and SIMD paths produce identical results within documented tolerance.",
+        "No heap allocation in math operations."
+      ],
+      "non_goals": [
+        "SIMD dispatch beyond SSE/AVX2 in the first pass.",
+        "Scene graph and animation.",
+        "GPU math types."
+      ],
+      "tests": "Unit tests for every operation with tolerance helpers, plus a SIMD-versus-scalar benchmark.",
+      "budgets": "No heap allocation. Record SIMD-versus-scalar results on the target machine.",
+      "roadmap": [3]
+    },
+    {
+      "name": "cyber_memory",
+      "short": "memory",
+      "kind": "foundation",
+      "layer": 0,
+      "order": 2,
+      "status": "active",
+      "purpose": "Allocator interface, linear, stack, pool, free-list and ring allocators, tracking, containers, strings, spans, and generation-counted handles.",
+      "public_api": "include/cyber/memory/",
+      "depends": ["cyber_core"],
+      "forbidden": ["cyber_platform", "cyber_rhi", "cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "Every runtime allocation goes through the allocator interface.",
+        "Handles carry an index and a generation.",
+        "Every container documents its copy and move rules."
+      ],
+      "non_goals": [
+        "OS virtual memory reservation (cyber_platform).",
+        "GPU memory allocation (cyber_rhi)."
+      ],
+      "tests": "Container stress tests, deliberate-leak report, stale-handle detection, ASan and UBSan runs.",
+      "budgets": "Allocator overhead documented per allocator. No hidden global allocations.",
+      "roadmap": [4]
+    },
+    {
+      "name": "cyber_platform",
+      "short": "platform",
+      "kind": "platform",
+      "layer": 1,
+      "order": 10,
+      "status": "active",
+      "purpose": "Renderer-agnostic OS services: window, input, time, files, memory mapping, thread wrappers, dynamic-library loading, and a caller-owned pixel present blit.",
+      "public_api": "include/cyber/platform/",
+      "depends": ["cyber_core", "cyber_memory"],
+      "forbidden": ["cyber_rhi", "cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "No renderer or RHI includes.",
+        "Win32 code is isolated under src/win32/.",
+        "Unsupported platforms provide a null window backend.",
+        "Platform state is explicit; no hidden mutable globals.",
+        "File buffers and watcher state use explicit allocators."
+      ],
+      "non_goals": [
+        "Job scheduling (cyber_jobs).",
+        "GPU device creation or present (cyber_rhi, cyber_software_renderer).",
+        "Audio, gamepads, clipboard, and drag-and-drop policy."
+      ],
+      "tests": "Window/event smoke test, timer and fixed-step tests, file I/O and memory mapping, file watcher, thread wrappers, and dynamic-library loading.",
+      "budgets": "Input latency and timer resolution recorded on the target machine. Window events are fixed-capacity; no per-frame heap allocation in the input path.",
+      "roadmap": [5]
+    },
+    {
+      "name": "cyber_perf",
+      "short": "perf",
+      "kind": "service",
+      "layer": 1,
+      "order": 11,
+      "status": "active",
+      "purpose": "Performance instrumentation seam: CPU and GPU markers, counters, frame statistics, budgets, and export.",
+      "public_api": "include/cyber/perf/",
+      "depends": ["cyber_core", "cyber_platform"],
+      "forbidden": ["cyber_rhi", "cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "Instrumentation is opt-in and near-zero cost when disabled.",
+        "No allocation on the marker hot path.",
+        "Implementations are thread-safe when used from worker threads."
+      ],
+      "non_goals": [
+        "RHI timestamp query implementation (cyber_rhi consumes and produces data).",
+        "Profiler visualization (cyber_ui).",
+        "Frame capture and export in the Phase 5 seam."
+      ],
+      "tests": "Null profiler behavior, balanced marker scopes from the job system, and counter delivery.",
+      "budgets": "Disabled marker cost below 1 ns; enabled path allocation-free.",
+      "roadmap": [5, 15, 36]
+    },
+    {
+      "name": "cyber_jobs",
+      "short": "jobs",
+      "kind": "service",
+      "layer": 1,
+      "order": 12,
+      "status": "active",
+      "purpose": "Job system: fixed worker pool, work-stealing queues, dependency counters, handles, and parallel-for.",
+      "public_api": "include/cyber/jobs/",
+      "depends": ["cyber_core", "cyber_memory", "cyber_platform", "cyber_perf"],
+      "forbidden": ["cyber_rhi", "cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "A job never waits on work that cannot make progress.",
+        "Every submitted job has explicit dependency and completion rules.",
+        "Shutdown is deterministic and joins every worker.",
+        "Oversubscription is tested explicitly."
+      ],
+      "non_goals": [
+        "Fibers and job cancellation in the first pass.",
+        "GPU scheduling.",
+        "Nested ParallelFor from a worker in the first pass."
+      ],
+      "tests": "10,000 jobs at 1, 2, 4, and hardware workers; dependency chains; ParallelFor coverage; oversubscription; repeated shutdown; profiler scope balance; TSan on Linux.",
+      "budgets": "10,000 jobs scale across all cores; record scaling at 1, 2, 4, and N workers.",
+      "roadmap": [5]
+    },
+    {
+      "name": "cyber_stability",
+      "short": "stability",
+      "kind": "service",
+      "layer": 1,
+      "order": 13,
+      "status": "planned",
+      "purpose": "Validation, diagnostics, crash handling, leak tracking, device-lost handling, and the fuzz harness.",
+      "public_api": "include/cyber/stability/",
+      "depends": ["cyber_core", "cyber_memory", "cyber_platform", "cyber_perf"],
+      "forbidden": ["cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "Validation is debug-only unless explicitly enabled.",
+        "Crash paths avoid allocation.",
+        "Every reported error has a stable code and a human-readable message."
+      ],
+      "non_goals": [
+        "RHI-specific barrier logic (cyber_rhi provides hooks).",
+        "Editor diagnostics UI."
+      ],
+      "tests": "Deliberate leak, invalid handle, crash-handler smoke test, and validation-hook tests.",
+      "budgets": "Disabled validation below 1% CPU. Crash handler writes within a bounded time.",
+      "roadmap": [2, 15, 40]
+    },
+    {
+      "name": "cyber_rhi",
+      "short": "rhi",
+      "kind": "graphics",
+      "layer": 2,
+      "order": 20,
+      "status": "active",
+      "purpose": "GPU hardware interface: device, queues, resources, pipelines, command lists, synchronization, swapchain, and backends.",
+      "public_api": "include/cyber/rhi/",
+      "depends": [
+        "cyber_core",
+        "cyber_math",
+        "cyber_memory",
+        "cyber_platform",
+        "cyber_jobs",
+        "cyber_perf",
+        "cyber_stability"
+      ],
+      "forbidden": ["cyber_renderer", "cyber_graphics", "cyber_ui"],
+      "invariants": [
+        "Only this module includes D3D12, Vulkan, or Metal headers.",
+        "Synchronization is explicit; there are no hidden barriers.",
+        "Resources use generation-counted handles and deferred destruction.",
+        "The null backend validates every public operation."
+      ],
+      "non_goals": [
+        "Render graph, materials, lighting, and passes (cyber_renderer).",
+        "Window creation (cyber_platform)."
+      ],
+      "tests": "Null-backend creation, lifetime and invalid-use tests; barrier validation; backend conformance suite.",
+      "budgets": "CPU submission cost measured. No per-draw heap allocation.",
+      "roadmap": [10, 11, 12, 13, 14, 15, 34, 35]
+    },
+    {
+      "name": "cyber_shaders",
+      "short": "shaders",
+      "kind": "graphics",
+      "layer": 2,
+      "order": 21,
+      "status": "active",
+      "purpose": "Typed Cyber shader language and HLSL compiler, compiler-owned reflection, keyword permutations, checksummed on-disk cache, job-system compilation, and file watching.",
+      "public_api": "include/cyber/shaders/",
+      "depends": ["cyber_core", "cyber_memory", "cyber_platform", "cyber_jobs"],
+      "forbidden": ["cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "Compiler errors carry file, line, and column.",
+        "The compiler never crashes on malformed input; parsers are fuzz-tested.",
+        "Reflection is the single source of truth for bindings."
+      ],
+      "non_goals": [
+        "Direct DXIL generation in the first pass.",
+        "Material parameter UI."
+      ],
+      "tests": "Golden compile and reflection tests, permutation and cache corruption tests, parallel library reload tests, and a D3D12 hot-reload sample.",
+      "budgets": "Shader source changes publish within 1 s on the target machine; cache hits avoid front-end recompilation.",
+      "roadmap": [16, 17]
+    },
+    {
+      "name": "cyber_assets",
+      "short": "assets",
+      "kind": "graphics",
+      "layer": 2,
+      "order": 22,
+      "status": "active",
+      "purpose": "Importers and decoders for glTF, OBJ, PNG, JPEG, DDS and KTX; cooked formats, asset database, and cooking.",
+      "public_api": "include/cyber/assets/",
+      "depends": ["cyber_core", "cyber_math", "cyber_memory", "cyber_platform"],
+      "forbidden": ["cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "Every parser treats input as hostile and bounds-checks before use.",
+        "Cooked files are versioned, checksummed, and memory-mappable.",
+        "No global asset state."
+      ],
+      "non_goals": [
+        "Residency and streaming policy (cyber_renderer).",
+        "Editor import UI."
+      ],
+      "tests": "Parser unit tests, fuzz tests, cook-and-load benchmark, and golden asset round-trip.",
+      "budgets": "Cooked load measurably faster than source. Fuzz targets run on a schedule.",
+      "roadmap": [9, 24, 33]
+    },
+    {
+      "name": "cyber_scene",
+      "short": "scene",
+      "kind": "graphics",
+      "layer": 2,
+      "order": 23,
+      "status": "active",
+      "purpose": "Renderer-owned copied proxies, bounded render-thread updates, CPU mesh storage and geometry processing, bounds, parallel frustum culling, screen-space LOD selection, and backend-neutral instance draw data.",
+      "public_api": "include/cyber/scene/",
+      "depends": ["cyber_core", "cyber_math", "cyber_memory", "cyber_jobs"],
+      "forbidden": ["cyber_renderer", "cyber_graphics", "cyber_ui"],
+      "invariants": [
+        "Proxies contain copied renderer data; no game-thread pointer is retained.",
+        "Scene mutation belongs to the render owner; worker jobs read immutable scene storage during culling.",
+        "Proxy handles are generation checked and stale handles never resolve.",
+        "Culling is conservative, deterministic, and matches an independent brute-force reference.",
+        "Transform, bounds, and dirty-state data stay in bounded contiguous storage.",
+        "Scene command bytes are versioned, bounded, and applied in queue order.",
+        "Mesh data is validated and copied into allocator-owned storage; packed data is an explicit checked conversion.",
+        "Geometry processing preserves submesh/material boundaries and reports measured simplification error.",
+        "Instance batch generation is deterministic and does not own GPU resources or issue backend commands."
+      ],
+      "non_goals": [
+        "Gameplay scene graph.",
+        "Physics and animation."
+      ],
+      "tests": "Proxy command and lifecycle tests, mesh validation, tangent/bounds/packing/simplification tests, deterministic instance-batch tests, public-header compilation, brute-force culling comparison, and large-scene geometry coverage.",
+      "budgets": "100,000-proxy cull within 5 ms p95 on the documented 4-core reference machine.",
+      "roadmap": [22, 23]
+    },
+    {
+      "name": "cyber_renderer",
+      "short": "renderer",
+      "kind": "graphics",
+      "layer": 3,
+      "order": 30,
+      "status": "active",
+      "purpose": "Renderer-side shader and material systems, frame streaming, render graphs, and bounded render-thread frame pipelining.",
+      "public_api": "include/cyber/renderer/",
+      "depends": ["cyber_core", "cyber_math", "cyber_memory", "cyber_jobs", "cyber_platform", "cyber_perf", "cyber_rhi", "cyber_shaders"],
+      "forbidden": ["cyber_graphics", "cyber_ui", "tools"],
+      "invariants": [
+        "All GPU work goes through cyber_rhi; no backend headers.",
+        "Passes declare reads and writes; barriers are graph-generated.",
+        "Pipeline changes publish only at frame boundaries and retired GPU objects survive the frames-in-flight interval.",
+        "Render-thread callbacks own renderer-side RHI access; immutable frame packets are copied into bounded slots before publication.",
+        "CPU packet slots and GPU frame slots have distinct completion rules.",
+        "No game logic, only render proxies."
+      ],
+      "non_goals": [
+        "Product plugin ABI (cyber_graphics).",
+        "Editor integration."
+      ],
+      "tests": "Null-backend render-thread ordering, overlap, backpressure, resize/shutdown, callback-error, single-thread parity, graph, material, and public-header tests.",
+      "budgets": "Per-pass GPU budgets live in docs/perf. Frame-time percentiles are tracked.",
+      "roadmap": [17, 18, 19, 20, 21, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 37]
+    },
+    {
+      "name": "cyber_ui",
+      "short": "ui",
+      "kind": "graphics",
+      "layer": 3,
+      "order": 31,
+      "status": "planned",
+      "purpose": "Immediate-mode UI, debug overlay, text, graphs, console variables, and the render graph viewer.",
+      "public_api": "include/cyber/ui/",
+      "depends": ["cyber_core", "cyber_math", "cyber_memory", "cyber_perf", "cybergraphics_api"],
+      "forbidden": ["cyber_rhi", "cyber_renderer", "cyber_graphics"],
+      "invariants": [
+        "UI draws only through the graphics API and works on GPU and software renderers.",
+        "No per-frame allocation in steady state.",
+        "Input routing is deterministic."
+      ],
+      "non_goals": [
+        "Full editor framework.",
+        "Game UI framework."
+      ],
+      "tests": "Golden UI image on both renderers, input routing tests, and a no-allocation steady-state test.",
+      "budgets": "UI CPU cost below the budget recorded in the phase report.",
+      "roadmap": [38]
+    },
+    {
+      "name": "cyber_capture",
+      "short": "capture",
+      "kind": "service",
+      "layer": 3,
+      "order": 32,
+      "status": "planned",
+      "purpose": "Frame capture: record RHI commands and resources, versioned capture format, and replay hooks.",
+      "public_api": "include/cyber/capture/",
+      "depends": ["cyber_core", "cyber_memory", "cyber_platform", "cyber_rhi"],
+      "forbidden": ["cyber_graphics", "cyber_renderer"],
+      "invariants": [
+        "Capture format is versioned and backend-neutral.",
+        "Replay is deterministic within tolerance.",
+        "Capture overhead is bounded and opt-in."
+      ],
+      "non_goals": [
+        "GUI inspector (tools/capture).",
+        "PIX or RenderDoc replacement."
+      ],
+      "tests": "Record and replay round-trip, cross-backend replay, and format version compatibility.",
+      "budgets": "Capture overhead recorded. No overhead when disabled.",
+      "roadmap": [39]
+    },
+    {
+      "name": "cyber_graphics",
+      "short": "graphics",
+      "kind": "product",
+      "layer": 4,
+      "order": 40,
+      "status": "planned",
+      "purpose": "The CyberGraphics GPU renderer product: plugin entry, backend selection, frame loop, and implementation of the stable API.",
+      "public_api": "include/cyber/graphics/",
+      "depends": [
+        "cyber_core",
+        "cyber_math",
+        "cyber_memory",
+        "cyber_platform",
+        "cyber_jobs",
+        "cyber_perf",
+        "cyber_stability",
+        "cyber_rhi",
+        "cyber_shaders",
+        "cyber_assets",
+        "cyber_scene",
+        "cyber_renderer",
+        "cybergraphics_api"
+      ],
+      "forbidden": ["cyber_software_renderer", "tools"],
+      "invariants": [
+        "Implements only the stable API in include/cybergraphics/.",
+        "No public C++ types cross the plugin boundary.",
+        "Capability negotiation is explicit."
+      ],
+      "non_goals": [
+        "CPU rendering (cyber_software_renderer).",
+        "Gameplay."
+      ],
+      "tests": "Plugin ABI compatibility, backend switch, and golden images against the software reference.",
+      "budgets": "Frame budgets live in docs/perf. CPU submission cost measured.",
+      "roadmap": [14, 15, 25]
+    },
+    {
+      "name": "cyber_software_renderer",
+      "short": "software",
+      "kind": "product",
+      "layer": 4,
+      "order": 41,
+      "status": "active",
+      "purpose": "CPU reference renderer: framebuffer, rasterization, depth, textures, shaders, clustered PBR, golden images, and the second plugin.",
+      "public_api": "include/cyber/software/",
+      "depends": [
+        "cyber_core",
+        "cyber_math",
+        "cyber_memory",
+        "cyber_platform",
+        "cyber_jobs",
+        "cyber_renderer"
+      ],
+      "forbidden": ["cyber_rhi", "cyber_graphics"],
+      "invariants": [
+        "No direct RHI or graphics-backend API use; rendering executes on the CPU.",
+        "Deterministic output for golden images.",
+        "Color is stored linear; the renderer converts to sRGB only when pixels leave it.",
+        "Provides the stable API declarations in include/cybergraphics/; the renderer adapter is Phase 25 work."
+      ],
+      "non_goals": [
+        "Performance parity with the GPU.",
+        "Production rendering."
+      ],
+      "tests": "Golden images at 640x360, raster coverage, clipping, and API conformance.",
+      "budgets": "Golden-image suite runtime budget. Small test resolution.",
+      "roadmap": [6, 7, 8, 9, 25, 27]
+    },
+    {
+      "name": "cyber_plugin_host",
+      "short": "plugin_host",
+      "kind": "service",
+      "layer": 4,
+      "order": 42,
+      "status": "active",
+      "purpose": "Validate and load renderer plugins through the stable ABI, negotiate capabilities, and select the configured renderer with an explicit fallback diagnostic.",
+      "public_api": "include/cyber/plugin_host/",
+      "depends": ["cyber_core", "cyber_platform", "cybergraphics_api"],
+      "forbidden": ["cyber_software_renderer", "cyber_rhi"],
+      "invariants": [
+        "Keep plugin libraries loaded for the entire lifetime of plugin-owned handles.",
+        "Reject incompatible ABI tables and unmet required capabilities before device creation.",
+        "Preserve the preferred renderer failure when a fallback is selected."
+      ],
+      "non_goals": [
+        "Renderer implementation.",
+        "Automatic fallback after device creation has begun."
+      ],
+      "tests": "Dynamic plugin ABI negotiation, capability validation, renderer preference, fallback diagnostics, and plugin lifetime.",
+      "budgets": "No per-frame allocation or plugin loading after startup selection.",
+      "roadmap": [25]
+    }
+  ]
+}

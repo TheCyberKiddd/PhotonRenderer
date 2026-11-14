@@ -1,0 +1,169 @@
+# cyber_renderer — module contract
+
+**Kind:** graphics
+**Layer:** 3
+**Order:** 30
+**Status:** active
+**Owner:** @TheCyberKiddd
+
+## Purpose
+
+Phase 17's renderer-side shader integration, Phase 18's material system, Phase
+19's frame data streaming and descriptor allocation, Phase 20's render graph,
+and Phase 21's bounded render-thread frame handoff:
+compiler-reflected RHI layouts, vertex input layouts, asynchronous
+graphics-pipeline creation, frame-boundary publication, fallback pipelines,
+deferred retirement, immutable material definitions, mutable instances,
+reflected parameter blocks, texture slots, text serialization, sorted draw
+records, fence-safe per-frame upload streams, generation-counted persistent
+descriptor indices, per-frame transient indices, and capability-gated bindless
+tables. Later phases add lighting and GPU-driven rendering.
+
+## Public API
+
+`include/cyber/renderer/`
+
+`render_thread.h` provides a single-producer/single-consumer command queue with
+copied immutable frame packets, ordered resize requests, render-owner
+callbacks, configurable in-flight CPU packets, and a permanent
+single-threaded reference mode.
+`reflected_layout.h` derives RHI layouts from `cyber_shaders::Reflection`,
+including the material parameter buffer at `b1, space2`.
+`hot_pipeline.h` builds graphics pipelines asynchronously and publishes them
+at `BeginFrame`. `material.h` validates immutable material definitions against
+shader reflection, creates mutable instances with explicit GPU uploads, sorts
+draw keys, and parses/writes bounded `.cybermat` documents. Definitions borrow
+their pipeline; instances borrow their definition, device, and allocator, and
+never own resolved texture views. Only headers under this path are public.
+Everything under `src/` is private. Public headers must compile on their own
+and must not include another module's private headers.
+Phase 19 adds a frame-slot-bound upload stream with checked aligned allocation,
+persistent and transient descriptor allocators, and finite bindless resource
+tables with a conventional fallback when `Feature::BindlessResources` is
+absent.
+Phase 20 adds a setup/execute render graph with generation-checked logical
+resources, imported and transient buffers/textures, inferred pass hazards,
+export- and side-effect-rooted pass culling, descriptor-compatible transient
+aliasing, automatic RHI barriers, and bounded text/Graphviz diagnostics.
+Imported resources remain caller-owned; the graph owns only transient physical
+resources it creates. Passes execute in deterministic declaration order on a
+caller-owned recording command list; submission and cross-queue synchronization
+remain the caller's responsibility. The caller acknowledges successful
+submission before reusing a graph; a recorded command list that is discarded
+instead invalidates that graph instance for reuse. Before destroying the graph,
+the caller discards any unsubmitted recording and waits until submitted work no
+longer references graph-owned transients.
+Phase 21 adds a bounded producer-to-render-owner frame handoff with copied
+immutable packets, ordered resize and shutdown, and a single-threaded reference
+mode. GPU-visible resource reuse remains guarded by RHI frame fences.
+Phase 27 adds a deterministic CPU clustered-light list builder with checked
+perspective-grid sizing, logarithmic depth slices, conservative point/spot
+light bounds, and per-tile occupancy output. It is a CPU correctness oracle,
+not yet a GPU upload, compute dispatch, or forward-shading integration.
+Phase 31 adds `raytracing_path.h`: `SelectRayTracingPlan` resolves a
+`RayTracingPolicyDesc` against reported device capabilities and chooses, for
+each of shadows, reflections, global illumination, and ambient occlusion,
+either a hardware ray-tracing technique or the rasterized path that effect
+always has, with a reason for every fallback. It is pure — no device objects
+are created — so it is unit tested against fabricated capability sets. This
+build has no GPU ray-tracing implementation (`kHardwareRayTracingCompiledIn`
+is `false`), so a capable adapter resolves to the rasterized path with the
+reason `NotImplemented`. See [ADR 0028](../../../docs/adr/0028-gi-approach.md).
+Phase 32 adds GPU-driven rendering. `gpu_driven.h` describes a scene once —
+instances with world bounds, draw groups with up to four LODs, each LOD one
+indexed draw — and provides the Hi-Z pyramid and occlusion test, a CPU
+reference culler that runs the culling shader's arithmetic and agrees with
+Phase 22's `Scene::Cull`, and the geometry-path and async-compute policies.
+`gpu_culling_pipeline.h` is the GPU side: Hi-Z reduction, instance culling, and
+ordered draw compaction as compute dispatches on a graphics or compute queue,
+and one `DrawIndexedIndirectCount` for every surviving batch.
+`gpu_light_culling.h` builds Phase 27's cluster lists in a compute shader as a
+conservative superset of the CPU lists. `meshlet.h` builds meshlets, culls
+them by sphere and normal cone, and expands survivors for the vertex pipeline;
+no mesh-shader pipeline is compiled in (`kMeshShaderPathCompiledIn` is
+`false`). See the [Phase 32 design](../../../docs/design/phase-32-gpu-driven.md).
+
+## Dependencies
+
+Allowed: cyber_core, cyber_math, cyber_memory, cyber_jobs, cyber_platform, cyber_perf,
+cyber_rhi, cyber_shaders
+
+Forbidden: cyber_graphics, cyber_ui, tools
+
+Dependencies are one-way. A module may depend only on modules with a lower
+`order` value, or on a declared contract such as `cybergraphics_api`.
+
+## Invariants
+
+- All GPU work goes through cyber_rhi; no backend headers.
+- Reflection and layouts are derived from compiler output, not backend
+  reflection.
+- Material parameter names, types, and byte offsets match reflected members;
+  material buffers are b1/space2, while b0/space0 remains push constants.
+- Material uploads are explicitly recorded on a graphics-capable command list;
+  the caller orders submission, in-flight updates, and resource destruction.
+- Stream slots are writable only after their frame fence completes; descriptor
+  indices are generation checked and transient indices reset only on a safe
+  frame-slot reuse.
+- Bindless access is enabled only when the device reports the feature; table
+  mutations are restricted to safe frame slots and unused entries hold caller
+  supplied fallback resources.
+- A hardware ray-tracing technique is selected only when the device reports
+  `Feature::RayTracing` (and `Feature::RayQuery` for inline queries) and the
+  build contains the GPU path; every other case resolves to the rasterized
+  technique, and `RayQuery` reported without `RayTracing` is trusted for
+  neither.
+- GPU culling decides visibility with the CPU reference's operations in the
+  same order, `precise` in the shader; a disagreement between them is a
+  defect unless a reported decision margin is within rounding. Draw
+  compaction is ordered, so the GPU's draws equal the reference's byte for
+  byte. A pipeline tracks its own buffers' states in recording order, so its
+  lists are submitted in the order they were recorded.
+- Async compute is selected only when the device has a compute queue and,
+  under `Auto`, a measurement shows a gain; the compute submission signals a
+  fence the graphics submission waits on with `rhi::GpuWait`.
+- Graph setup callbacks declare all resource reads and writes before execution;
+  pass callbacks cannot submit commands or access resources outside their
+  declared context.
+- Transient aliases require identical RHI descriptions and non-overlapping
+  live-pass intervals; all graph-generated transitions are recorded before the
+  corresponding pass executes.
+- Pipeline changes publish only at frame boundaries; replaced GPU objects are
+  retained through the configured frames-in-flight interval.
+- The game thread is the render queue's only producer and lifecycle owner; its
+  published frame bytes are copied into bounded storage before enqueue.
+- Render-thread initialization, frame, resize, and shutdown callbacks are the
+  renderer-side owners of callback-managed RHI objects; no producer-side RHI
+  access is part of the render-thread contract.
+- CPU packet completion is distinct from GPU completion; per-frame GPU
+  resources still require `rhi::FrameRing` fences.
+- Queue saturation returns `ErrorCode::Busy`, payloads exceeding configured
+  storage return `ErrorCode::OutOfRange`, and asynchronous callback failures
+  remain observable through `WaitIdle` and `Shutdown`.
+- The render owner calls public renderer methods and all renderer RHI methods;
+  background jobs process owned CPU data only. Hot-pipeline worker jobs prepare
+  reflection/layout data, while RHI shader, layout, and pipeline objects are
+  created and destroyed by the render owner.
+- Passes declare reads and writes; barriers are graph-generated.
+- No game logic, only render proxies.
+
+## Non-goals
+
+- Product plugin ABI (cyber_graphics).
+- Editor integration.
+
+## Tests
+
+Null-backend render-thread ordering, overlap, backpressure, resize/shutdown,
+callback-error, single-thread parity, reflected-layout, hot-pipeline,
+material-instance, material-file, render-graph dependency/culling/aliasing/
+barrier, and public-header tests. Run render-thread tests under ThreadSanitizer
+on Linux.
+
+## Budgets
+
+Per-pass GPU budgets live in docs/perf. Frame-time percentiles are tracked.
+
+## Roadmap
+
+Phases 17, 18, 19, 20, 21, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 37.

@@ -1,0 +1,59 @@
+include_guard(GLOBAL)
+
+if(CYBER_SHIPPING)
+    add_compile_definitions(CG_SHIPPING=1)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(CG_DEBUG=1)
+elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    add_compile_definitions(CG_PROFILE=1)
+else()
+    add_compile_definitions(CG_RELEASE=1)
+endif()
+
+# Pin the MSVC runtime explicitly. Plugins and the host must agree on /MD or
+# /MT; the default is the dynamic runtime, which is the normal choice for a
+# renderer loaded into another executable.
+if(MSVC AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+    if(CYBER_MSVC_STATIC_RUNTIME)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    else()
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+    endif()
+endif()
+
+# CMake adds /EHsc to the default MSVC flags. Remove it here so each target
+# chooses its own exception model without an overriding-option warning.
+if(MSVC)
+    string(REGEX REPLACE "(^| )/EHsc( |$)" "\\1" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    string(STRIP "${CMAKE_CXX_FLAGS}" CMAKE_CXX_FLAGS)
+endif()
+
+set(CYBER_RUNTIME_OPTIONS "")
+if(MSVC)
+    if(CYBER_NO_EXCEPTIONS)
+        list(APPEND CYBER_RUNTIME_OPTIONS /EHs-c-)
+        # Tell the MSVC standard library that exception paths are disabled. This
+        # must apply to every target, including tests and tools: mixing the two
+        # settings gives std::system_error different vtable layouts, which
+        # shipping LTO reports as C4743 and refuses to link.
+        add_compile_definitions(_HAS_EXCEPTIONS=0)
+    else()
+        list(APPEND CYBER_RUNTIME_OPTIONS /EHsc)
+    endif()
+    if(CYBER_NO_RTTI)
+        list(APPEND CYBER_RUNTIME_OPTIONS /GR-)
+    else()
+        list(APPEND CYBER_RUNTIME_OPTIONS /GR)
+    endif()
+else()
+    if(CYBER_NO_EXCEPTIONS)
+        list(APPEND CYBER_RUNTIME_OPTIONS -fno-exceptions)
+    else()
+        list(APPEND CYBER_RUNTIME_OPTIONS -fexceptions)
+    endif()
+    if(CYBER_NO_RTTI)
+        list(APPEND CYBER_RUNTIME_OPTIONS -fno-rtti)
+    else()
+        list(APPEND CYBER_RUNTIME_OPTIONS -frtti)
+    endif()
+endif()
