@@ -41,10 +41,9 @@ struct ImageDifferenceMetrics
 
 // Compares two images channel by channel. Returns InvalidArgument for an
 // invalid image, a size mismatch, or a negative tolerance.
-[[nodiscard]] core::Status<core::Error> MeasureImageDifference(const Framebuffer& image,
-                                                               const Framebuffer& reference,
-                                                               f32 tolerance,
-                                                               ImageDifferenceMetrics& out) noexcept;
+[[nodiscard]] core::Status<core::Error>
+MeasureImageDifference(const Framebuffer& image, const Framebuffer& reference, f32 tolerance,
+                       ImageDifferenceMetrics& out) noexcept;
 
 // How much of the previous frame survived into this one where it should not
 // have.
@@ -144,8 +143,7 @@ struct EdgeAliasingMetrics
 // Measures edge steps. stepThreshold is an absolute luminance difference and
 // must be positive. Returns InvalidArgument for an invalid image or a
 // non-positive threshold.
-[[nodiscard]] core::Status<core::Error> MeasureEdgeAliasing(const Framebuffer& image,
-                                                            f32 stepThreshold,
-                                                            EdgeAliasingMetrics& out) noexcept;
+[[nodiscard]] core::Status<core::Error>
+MeasureEdgeAliasing(const Framebuffer& image, f32 stepThreshold, EdgeAliasingMetrics& out) noexcept;
 
 }  // namespace cyber::software

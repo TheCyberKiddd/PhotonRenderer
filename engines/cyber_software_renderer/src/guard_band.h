@@ -103,7 +103,7 @@ template <typename Vertex>
     for (u32 index = 0; index < count; ++index)
     {
         const f32 w = polygon[index].position.w;
-        if (!(w > 0.0f) || !std::isfinite(w))
+        if (!(w > 0.0f) || !math::IsFinite(w))
         {
             return false;
         }
@@ -147,7 +147,7 @@ template <typename Vertex, typename Lerp>
             }
 
             const f32 denominator = currentDistance - nextDistance;
-            if (denominator == 0.0f || !std::isfinite(denominator))
+            if (denominator == 0.0f || !math::IsFinite(denominator))
             {
                 continue;
             }

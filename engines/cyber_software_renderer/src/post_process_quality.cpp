@@ -1,6 +1,5 @@
-#include <cyber/software/post_process_quality.h>
-
 #include <cyber/software/post_process.h>
+#include <cyber/software/post_process_quality.h>
 
 #include <algorithm>
 #include <cmath>
@@ -30,13 +29,13 @@ using Status = core::Status<Error>;
 
 [[nodiscard]] f32 Finite(f32 value) noexcept
 {
-    return std::isfinite(value) ? value : 0.0f;
+    return math::IsFinite(value) ? value : 0.0f;
 }
 
 }  // namespace
 
-Status MeasureImageDifference(const Framebuffer& image, const Framebuffer& reference,
-                              f32 tolerance, ImageDifferenceMetrics& out) noexcept
+Status MeasureImageDifference(const Framebuffer& image, const Framebuffer& reference, f32 tolerance,
+                              ImageDifferenceMetrics& out) noexcept
 {
     if (!image.IsValid() || !reference.IsValid())
     {
@@ -46,7 +45,7 @@ Status MeasureImageDifference(const Framebuffer& image, const Framebuffer& refer
     {
         return InvalidArgument("comparison images differ in size");
     }
-    if (!std::isfinite(tolerance) || tolerance < 0.0f)
+    if (!math::IsFinite(tolerance) || tolerance < 0.0f)
     {
         return InvalidArgument("comparison tolerance must be zero or positive");
     }
@@ -108,8 +107,8 @@ Status MeasureGhosting(const Framebuffer& resolved, const Framebuffer& current,
     {
         return InvalidArgument("ghosting input images differ in size");
     }
-    if (!std::isfinite(changeThreshold) || changeThreshold <= 0.0f ||
-        !std::isfinite(ghostThreshold) || ghostThreshold <= 0.0f)
+    if (!math::IsFinite(changeThreshold) || changeThreshold <= 0.0f ||
+        !math::IsFinite(ghostThreshold) || ghostThreshold <= 0.0f)
     {
         return InvalidArgument("ghosting thresholds must be positive");
     }
@@ -135,8 +134,7 @@ Status MeasureGhosting(const Framebuffer& resolved, const Framebuffer& current,
             const f32 axis[3] = {Finite(previousColor.r) - Finite(currentColor.r),
                                  Finite(previousColor.g) - Finite(currentColor.g),
                                  Finite(previousColor.b) - Finite(currentColor.b)};
-            const f32 axisLengthSquared =
-                axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
+            const f32 axisLengthSquared = axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
             const f32 axisLength = std::sqrt(axisLengthSquared);
             if (axisLength <= changeThreshold)
             {
@@ -182,9 +180,8 @@ Status MeasureGhosting(const Framebuffer& resolved, const Framebuffer& current,
     out.meanContamination = static_cast<f32>(contaminationSum / static_cast<double>(changed));
     out.maxContamination = worst;
     out.weightedContamination =
-        axisEnergySum > 0.0
-            ? static_cast<f32>(std::clamp(projectionSum / axisEnergySum, 0.0, 1.0))
-            : 0.0f;
+        axisEnergySum > 0.0 ? static_cast<f32>(std::clamp(projectionSum / axisEnergySum, 0.0, 1.0))
+                            : 0.0f;
     out.ghostedPixels = ghosted;
     out.ghostedFraction = static_cast<f32>(ghosted) / static_cast<f32>(changed);
     return Status::Ok();
@@ -251,7 +248,7 @@ Status MeasureEdgeAliasing(const Framebuffer& image, f32 stepThreshold,
     {
         return InvalidArgument("edge measurement image is invalid");
     }
-    if (!std::isfinite(stepThreshold) || stepThreshold <= 0.0f)
+    if (!math::IsFinite(stepThreshold) || stepThreshold <= 0.0f)
     {
         return InvalidArgument("edge step threshold must be positive");
     }

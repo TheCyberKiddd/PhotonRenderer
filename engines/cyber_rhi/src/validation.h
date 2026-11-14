@@ -89,6 +89,15 @@ inline constexpr BufferUsage kBufferPipelineUsages = BufferUsage::Vertex | Buffe
 [[nodiscard]] bool ValidateTextureDesc(const Capabilities& capabilities, const TextureDesc& desc,
                                        Error* out) noexcept;
 
+// One tile mapping against the texture's tiling and the heap it names.
+// `heapValid` says whether `mapping.heap` resolved; `heapTiles` is its size.
+[[nodiscard]] bool ValidateTileMapping(const TextureTiling& tiling, const TileMapping& mapping,
+                                       u32 heapTiles, bool heapValid, Error* out) noexcept;
+
+// Position of a tile in a reserved texture's flat tile list: standard mips in
+// order, each row-major, then the packed tiles.
+[[nodiscard]] u32 TileLinearIndex(const TextureTiling& tiling, const TileMapping& mapping) noexcept;
+
 // True when a view of dimension `view` may expose a texture of dimension
 // `base`.
 [[nodiscard]] bool IsViewDimensionAllowed(TextureDimension base, TextureDimension view) noexcept;

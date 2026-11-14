@@ -513,12 +513,10 @@ public:
     // deltaSeconds drives exposure adaptation; pass the frame's own delta.
     // timings may be null. Returns InvalidArgument for a mismatched or invalid
     // buffer and Internal when a pass cannot complete.
-    [[nodiscard]] core::Status<core::Error> Execute(const PostProcessInputs& inputs,
-                                                    Framebuffer& destination,
-                                                    const PostProcessSettings& settings,
-                                                    const PostProcessView& view, f32 deltaSeconds,
-                                                    jobs::JobSystem* jobSystem,
-                                                    PostProcessTimings* timings) noexcept;
+    [[nodiscard]] core::Status<core::Error>
+    Execute(const PostProcessInputs& inputs, Framebuffer& destination,
+            const PostProcessSettings& settings, const PostProcessView& view, f32 deltaSeconds,
+            jobs::JobSystem* jobSystem, PostProcessTimings* timings) noexcept;
 
     // Exposure adaptation carried between frames. Reset it when the camera
     // cuts.

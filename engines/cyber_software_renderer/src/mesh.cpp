@@ -98,7 +98,7 @@ bool ParseFloat(const char*& cursor, const char* end, f32& value) noexcept
     }
 
     value = static_cast<f32>(negative ? -magnitude : magnitude);
-    return std::isfinite(value);
+    return math::IsFinite(value);
 }
 
 bool ParseInt(const char*& cursor, const char* end, i32& value) noexcept

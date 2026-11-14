@@ -212,6 +212,12 @@ struct TextureDesc
     // attachments and frame resources are the classic transient case: their
     // bytes can be reused inside one frame once the GPU walks past them.
     MemoryLifetime lifetime = MemoryLifetime::Retained;
+    // Reserve address space only: the texture is created without memory and
+    // its 64 KiB tiles are mapped onto tile heaps with
+    // `Device::UpdateTileMappings`. Requires `Feature::ReservedTextures`, a 2D
+    // single-layer, single-sample texture, and no attachment usage. Reads of an
+    // unmapped tile return zero; writes to one are discarded (Phase 33).
+    bool reserved = false;
     // Optional name for logs and debuggers. Borrowed.
     const char* label = nullptr;
 };
@@ -236,7 +242,82 @@ struct TextureInfo
     // `TextureByteSize` with the default row alignment. Backends that choose a
     // different layout report their own number.
     u64 sizeBytes = 0;
+    // True for a texture created with `TextureDesc::reserved`.
+    bool reserved = false;
 };
+
+// ---- Reserved textures and tile heaps (Phase 33) -----------------------------
+
+// The tile size every API agrees on: D3D12 tiles and Vulkan sparse blocks for
+// the standard shapes are both 64 KiB.
+inline constexpr u64 kTileSizeBytes = 64ull * 1024ull;
+// Mip levels a tiling record describes.
+inline constexpr u32 kMaxTiledMips = 16;
+
+struct TileHeapDesc
+{
+    // Tiles of kTileSizeBytes the heap holds. At least one.
+    u32 tileCount = 0;
+    const char* label = nullptr;
+};
+
+// How a reserved texture is cut into tiles. Mips whose extent is at least one
+// tile in both dimensions are "standard": each is a grid of tiles addressed by
+// (x, y). The remaining small mips are packed together by the driver into
+// `packedTileCount` tiles addressed by index, mapped and unmapped as a unit.
+struct TextureTiling
+{
+    bool valid = false;
+    // Texels covered by one tile of a standard mip, in the format's standard
+    // tile shape (e.g. 128x128 for 4-byte texels, 512x256 for BC1).
+    u32 tileWidth = 0;
+    u32 tileHeight = 0;
+    // Standard mips are 0..standardMipCount-1; packed mips follow.
+    u32 standardMipCount = 0;
+    u32 packedMipCount = 0;
+    u32 packedTileCount = 0;
+    u32 totalTileCount = 0;
+    u32 mipTilesX[kMaxTiledMips] = {};
+    u32 mipTilesY[kMaxTiledMips] = {};
+
+    [[nodiscard]] constexpr u32 MipTileCount(u32 mip) const noexcept
+    {
+        return mip < standardMipCount ? mipTilesX[mip] * mipTilesY[mip] : 0u;
+    }
+};
+
+// One tile's mapping change. A standard tile is (mipLevel, tileX, tileY); a
+// packed tile sets `packed` and uses `tileX` as its index among the packed
+// tiles (mipLevel is ignored). An invalid `heap` unmaps the tile.
+struct TileMapping
+{
+    TextureHandle texture;
+    u32 mipLevel = 0;
+    u32 tileX = 0;
+    u32 tileY = 0;
+    bool packed = false;
+    TileHeapHandle heap;
+    u32 heapTile = 0;
+};
+
+// Where one tile of a reserved texture currently points.
+struct TileMappingInfo
+{
+    bool mapped = false;
+    TileHeapHandle heap;
+    u32 heapTile = 0;
+};
+
+// The standard-shape tiling of a reserved texture description, computed the
+// way D3D12's standard swizzle and Vulkan's standard sparse block shapes define
+// it. The tile shape and the tile grid of every mip that covers at least one
+// whole tile are fixed by the standard. Mips smaller than a tile are assumed
+// packed, which is the conservative case: a driver may instead give each its
+// own partial tile (WARP does; the HD Graphics 530 packs), and the packed tile
+// count is an estimate (the bytes of the packed mips in whole tiles). Plan
+// with this, then map with what `Device::TextureTilingOf` reports. Returns
+// `valid == false` for a description that cannot be reserved.
+[[nodiscard]] TextureTiling ComputeStandardTiling(const TextureDesc& desc) noexcept;
 
 // Which role a texture view has when its texture supports multiple usages.
 enum class TextureViewUsage : u8

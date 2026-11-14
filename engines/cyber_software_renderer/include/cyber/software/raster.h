@@ -211,10 +211,11 @@ RasterizeTriangles(Framebuffer& target, memory::Span<const RasterTriangle> trian
 // pointer with a non-zero count, Overflow when the triangle or bin count
 // exceeds 32 bits, and Internal when a temporary allocation fails. `stats` is
 // optional and is zeroed on entry.
-[[nodiscard]] core::Status<core::Error> RasterizeDepthOnlyTriangles(
-    DepthBuffer& depth, memory::Span<const DepthOnlyRasterTriangle> triangles,
-    jobs::JobSystem* jobSystem, memory::Allocator& allocator, const RasterizerDesc& desc = {},
-    RasterStats* stats = nullptr) noexcept;
+[[nodiscard]] core::Status<core::Error>
+RasterizeDepthOnlyTriangles(DepthBuffer& depth,
+                            memory::Span<const DepthOnlyRasterTriangle> triangles,
+                            jobs::JobSystem* jobSystem, memory::Allocator& allocator,
+                            const RasterizerDesc& desc = {}, RasterStats* stats = nullptr) noexcept;
 
 // Rasterizes depth-tested triangles whose color is produced by a pixel shader.
 //

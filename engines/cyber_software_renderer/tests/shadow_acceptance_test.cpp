@@ -23,11 +23,10 @@
 // same metric, so a passing threshold proves the measurement has teeth rather
 // than that it cannot fail.
 
+#include <cyber/jobs/job_system.h>
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/software/pbr.h>
-#include <cyber/jobs/job_system.h>
 #include <cyber/software/shadow_quality.h>
-
 #include <cyber/test/test.h>
 
 #include <algorithm>
@@ -107,8 +106,7 @@ void BuildScene(VertexInput* vertices, u32& count)
 {
     count = 0;
     AppendQuad(vertices, count, Vec3{-kGroundExtent, 0.0f, kGroundExtent},
-               Vec3{kGroundExtent, 0.0f, kGroundExtent},
-               Vec3{kGroundExtent, 0.0f, -kGroundExtent},
+               Vec3{kGroundExtent, 0.0f, kGroundExtent}, Vec3{kGroundExtent, 0.0f, -kGroundExtent},
                Vec3{-kGroundExtent, 0.0f, -kGroundExtent}, Vec3{0.0f, 1.0f, 0.0f});
     AppendBox(vertices, count, Vec3{0.0f, kWallHeight * 0.5f, -25.0f},
               Vec3{kWallHalfThickness, kWallHeight * 0.5f, 35.0f});
@@ -258,10 +256,8 @@ CG_TEST(phase28_acceptance_scene_shows_no_shadow_acne)
     CG_REQUIRE(probeCount == kAcneProbeCount);
 
     ShadowAcneMetrics acne{};
-    CG_REQUIRE(static_cast<bool>(
-        MeasureShadowAcne(scene.cascades,
-                          cyber::memory::Span<const ShadowProbe>(probes, probeCount), 0.999f,
-                          acne)));
+    CG_REQUIRE(static_cast<bool>(MeasureShadowAcne(
+        scene.cascades, cyber::memory::Span<const ShadowProbe>(probes, probeCount), 0.999f, acne)));
     std::printf("[phase28] acne: samples=%u darkened=%u fraction=%.6f min=%.6f mean=%.6f run=%u\n",
                 acne.sampleCount, acne.darkenedSamples, static_cast<double>(acne.darkenedFraction),
                 static_cast<double>(acne.minVisibility), static_cast<double>(acne.meanVisibility),
@@ -282,10 +278,9 @@ CG_TEST(phase28_acceptance_scene_shows_no_shadow_acne)
     CG_REQUIRE(unbiased.Allocate(heap));
     CG_REQUIRE(unbiased.Render(heap, camera, zeroBiasConfig, vertices, vertexCount));
     ShadowAcneMetrics zeroBiasAcne{};
-    CG_REQUIRE(static_cast<bool>(
-        MeasureShadowAcne(unbiased.cascades,
-                          cyber::memory::Span<const ShadowProbe>(probes, probeCount), 0.999f,
-                          zeroBiasAcne)));
+    CG_REQUIRE(static_cast<bool>(MeasureShadowAcne(
+        unbiased.cascades, cyber::memory::Span<const ShadowProbe>(probes, probeCount), 0.999f,
+        zeroBiasAcne)));
     std::printf("[phase28] acne (zero bias): darkened=%u fraction=%.6f min=%.6f\n",
                 zeroBiasAcne.darkenedSamples, static_cast<double>(zeroBiasAcne.darkenedFraction),
                 static_cast<double>(zeroBiasAcne.minVisibility));
@@ -337,7 +332,8 @@ CG_TEST(phase28_acceptance_scene_shadow_stays_attached_to_its_caster)
     ShadowProbe beyondProbes[16]{};
     for (u32 index = 0; index < 16; ++index)
     {
-        beyondProbes[index] = GroundProbe(kShadowFarEdge + 0.6f, -2.0f - static_cast<f32>(index) * 2.2f);
+        beyondProbes[index] =
+            GroundProbe(kShadowFarEdge + 0.6f, -2.0f - static_cast<f32>(index) * 2.2f);
     }
     CG_REQUIRE(static_cast<bool>(MeasureShadowAcne(
         scene.cascades, cyber::memory::Span<const ShadowProbe>(beyondProbes, 16), 0.999f, beyond)));
@@ -353,9 +349,9 @@ CG_TEST(phase28_acceptance_scene_shadow_stays_attached_to_its_caster)
     CG_REQUIRE(detached.Allocate(heap));
     CG_REQUIRE(detached.Render(heap, camera, detachedConfig, vertices, vertexCount));
     ShadowContactMetrics detachedContact{};
-    CG_REQUIRE(static_cast<bool>(
-        MeasureShadowContact(detached.cascades, GroundProbe(0.0f, -6.0f), Vec3{1.0f, 0.0f, 0.0f},
-                             kStep, kWalkSamples, 0.5f, detachedContact)));
+    CG_REQUIRE(static_cast<bool>(MeasureShadowContact(detached.cascades, GroundProbe(0.0f, -6.0f),
+                                                      Vec3{1.0f, 0.0f, 0.0f}, kStep, kWalkSamples,
+                                                      0.5f, detachedContact)));
     std::printf("[phase28] contact (detached bias): visibility=%.6f lit=%d distance=%.4f\n",
                 static_cast<double>(detachedContact.contactVisibility),
                 detachedContact.foundLitSample ? 1 : 0,
@@ -502,13 +498,14 @@ CG_TEST(phase28_acceptance_scene_keeps_shadows_stable_while_the_camera_moves)
     }
 
     ShadowStabilityMetrics stability{};
-    CG_REQUIRE(static_cast<bool>(MeasureShadowStability(
-        cyber::memory::Span<const f32>(sequence, kProbeCount * kFrameCount), kProbeCount,
-        kFrameCount, stability)));
-    std::printf("[phase28] stability: maxDelta=%.6f (probe=%u frame=%u) mean=%.6f maxVariation=%.6f\n",
-                static_cast<double>(stability.maxFrameDelta), stability.maxFrameDeltaProbe,
-                stability.maxFrameDeltaFrame, static_cast<double>(stability.meanFrameDelta),
-                static_cast<double>(stability.maxTotalVariation));
+    CG_REQUIRE(static_cast<bool>(
+        MeasureShadowStability(cyber::memory::Span<const f32>(sequence, kProbeCount * kFrameCount),
+                               kProbeCount, kFrameCount, stability)));
+    std::printf(
+        "[phase28] stability: maxDelta=%.6f (probe=%u frame=%u) mean=%.6f maxVariation=%.6f\n",
+        static_cast<double>(stability.maxFrameDelta), stability.maxFrameDeltaProbe,
+        stability.maxFrameDeltaFrame, static_cast<double>(stability.meanFrameDelta),
+        static_cast<double>(stability.maxTotalVariation));
     CG_EXPECT_EQ(stability.probeCount, kProbeCount);
     CG_EXPECT_EQ(stability.frameCount, kFrameCount);
     CG_EXPECT_TRUE(stability.maxFrameDelta < 0.01f);
@@ -535,10 +532,9 @@ CG_TEST(phase28_acceptance_scene_keeps_shadows_stable_while_the_camera_moves)
         {
             const f32 viewDepth = -(edges[probe].worldPosition.z - camera.position.z);
             edgeSequence[static_cast<cyber::core::usize>(frame) * kEdgeProbeCount + probe] =
-                EvaluateDirectionalShadowVisibility(scene.cascades, viewDepth,
-                                                    edges[probe].worldPosition,
-                                                    edges[probe].worldNormal,
-                                                    edges[probe].directionToLight);
+                EvaluateDirectionalShadowVisibility(
+                    scene.cascades, viewDepth, edges[probe].worldPosition, edges[probe].worldNormal,
+                    edges[probe].directionToLight);
         }
     }
     ShadowStabilityMetrics edgeStability{};
@@ -596,17 +592,17 @@ CG_TEST(phase28_shadow_quality_metrics_reject_invalid_input)
 
     ShadowStabilityMetrics stability{};
     const f32 values[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-    CG_EXPECT_FALSE(static_cast<bool>(MeasureShadowStability(
-        cyber::memory::Span<const f32>(values, 4), 0, 2, stability)));
-    CG_EXPECT_FALSE(static_cast<bool>(MeasureShadowStability(
-        cyber::memory::Span<const f32>(values, 4), 3, 2, stability)));
-    CG_REQUIRE(static_cast<bool>(MeasureShadowStability(
-        cyber::memory::Span<const f32>(values, 4), 4, 1, stability)));
+    CG_EXPECT_FALSE(static_cast<bool>(
+        MeasureShadowStability(cyber::memory::Span<const f32>(values, 4), 0, 2, stability)));
+    CG_EXPECT_FALSE(static_cast<bool>(
+        MeasureShadowStability(cyber::memory::Span<const f32>(values, 4), 3, 2, stability)));
+    CG_REQUIRE(static_cast<bool>(
+        MeasureShadowStability(cyber::memory::Span<const f32>(values, 4), 4, 1, stability)));
     CG_EXPECT_NEAR(stability.maxFrameDelta, 0.0f, 1.0e-6f);
 
     const f32 flicker[4] = {0.0f, 1.0f, 0.0f, 1.0f};
-    CG_REQUIRE(static_cast<bool>(MeasureShadowStability(
-        cyber::memory::Span<const f32>(flicker, 4), 1, 4, stability)));
+    CG_REQUIRE(static_cast<bool>(
+        MeasureShadowStability(cyber::memory::Span<const f32>(flicker, 4), 1, 4, stability)));
     CG_EXPECT_NEAR(stability.maxFrameDelta, 1.0f, 1.0e-6f);
     CG_EXPECT_NEAR(stability.maxTotalVariation, 3.0f, 1.0e-6f);
 }

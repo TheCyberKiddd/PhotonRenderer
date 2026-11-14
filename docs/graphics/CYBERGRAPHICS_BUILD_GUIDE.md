@@ -752,11 +752,11 @@ done: the mesh-shader pipeline. See the
 ### Phase 33: Texture compression and streaming
 
 Tasks
-[ ] Your own BCn decoders first (they define the correct output), then encoders for BC1, BC4, BC5, and BC7, with PSNR (peak signal-to-noise ratio) measured against the decoder.
-[ ] Mip streaming with priority from screen coverage, background IO threads, and a residency manager that respects a video memory budget.
-[ ] A texture pool allocator, an eviction policy, and low-resolution placeholders while data loads.
-[ ] A residency debug view.
-[ ] Virtual texturing only after streaming is solid.
+[x] Your own BCn decoders first (they define the correct output), then encoders for BC1, BC4, BC5, and BC7, with PSNR (peak signal-to-noise ratio) measured against the decoder. `cyber/assets/bc_codec.h`; BC7 decoding covers all eight modes and is bit-exact by the specification; encoders score with the decoder's palette.
+[x] Mip streaming with priority from screen coverage, background IO threads, and a residency manager that respects a video memory budget. `TextureStreamer` with `ComputeWantedMip`; IO threads run at below-normal priority.
+[x] A texture pool allocator, an eviction policy, and low-resolution placeholders while data loads. A 64 KiB page pool (the D3D12 tile size), surplus-then-least-important eviction committed only when it frees enough, and a packed mip tail that is loaded first and never evicted.
+[x] A residency debug view. `RenderResidencyView`.
+[ ] Virtual texturing only after streaming is solid. Not started, as advised; the page pool and the sink's page lists are what it would build on.
 Read first: Texture block compression in Direct3D 11 · KTX 2.0 specification · Programming guide for DDS · Direct3D 12 programming guide (Memory management)
 Tips
 • Stream the smallest mips first, so something is always drawn.
@@ -764,6 +764,17 @@ Tips
 • Add PSNR thresholds to tests, so an encoder change that lowers quality fails CI.
 Write down: docs/design/phase-33-compression-streaming.md.
 Done when: a scene with more texture data than the memory budget runs without hitches, the residency view shows what is loaded, and the encoder PSNR tests pass.
+
+Done for the codec and the CPU side of streaming: `samples/18_texture_streaming`
+streams 400 BC1 textures, 1.07 GiB, through a 64 MiB budget for 1,800 frames
+at 60 Hz with a worst streaming update of 0.86-1.19 ms over two runs and none
+over the 2 ms hitch line, the budget full and never exceeded, and every texture
+drawable on every frame. Its residency view shows the nearest panels at full
+resolution falling off with distance. The encoder PSNR floors (BC7 43.0 dB, BC4
+and BC5 51.0 dB, BC1 37.0 dB) pass in `assets_bc_codec`. Not done: binding the
+page pool to D3D12 reserved resources, and virtual texturing. See the
+[Phase 33 design](../design/phase-33-compression-streaming.md) and
+[report](../reports/phase-33.md).
 
 ### Phase 34: Vulkan backend
 

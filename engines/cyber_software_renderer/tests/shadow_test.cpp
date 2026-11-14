@@ -130,8 +130,7 @@ bool RenderShadowAcceptanceScene(HeapAllocator& heap, const VertexInput* vertice
                                  cyber::core::u32 vertexCount, const Mat4& cameraViewProjection,
                                  const Vec3& eye, const Vec3& cameraForward,
                                  const Vec3& lightTravel, const ShadowMapView& shadow,
-                                 Framebuffer& color, DepthBuffer& depth,
-                                 bool enableFog = false,
+                                 Framebuffer& color, DepthBuffer& depth, bool enableFog = false,
                                  const DirectionalShadowCascadeSet* cascades = nullptr)
 {
     ShadowSceneShaderData data{};
@@ -205,10 +204,9 @@ bool DownsampleShadowScene(const Framebuffer& source, Framebuffer& destination,
                     sum.a += sample.a;
                 }
             }
-            destination.SetPixel(
-                x, y,
-                ToneMapAces(Color{sum.r / sampleCount, sum.g / sampleCount,
-                                  sum.b / sampleCount, sum.a / sampleCount}));
+            destination.SetPixel(x, y,
+                                 ToneMapAces(Color{sum.r / sampleCount, sum.g / sampleCount,
+                                                   sum.b / sampleCount, sum.a / sampleCount}));
         }
     }
     return true;
@@ -219,8 +217,8 @@ bool DownsampleShadowScene(const Framebuffer& source, Framebuffer& destination,
 CG_TEST(software_shadow_scene_supersampling_resolves_linear_edge_coverage)
 {
     HeapAllocator heap;
-    Framebuffer source = MakeScratchColor(heap, kShadowSceneSupersample * 2,
-                                          kShadowSceneSupersample);
+    Framebuffer source =
+        MakeScratchColor(heap, kShadowSceneSupersample * 2, kShadowSceneSupersample);
     Framebuffer resolved = MakeScratchColor(heap, 2, 1);
     CG_REQUIRE(source.IsValid());
     CG_REQUIRE(resolved.IsValid());
@@ -230,19 +228,19 @@ CG_TEST(software_shadow_scene_supersampling_resolves_linear_edge_coverage)
         for (cyber::core::i32 x = 0; x < source.Width(); ++x)
         {
             const bool black = x < kShadowSceneSupersample && x + y < 14;
-            source.SetPixel(x, y, black ? Color{0.0f, 0.0f, 0.0f, 1.0f}
-                                        : Color{1.0f, 1.0f, 1.0f, 1.0f});
+            source.SetPixel(x, y,
+                            black ? Color{0.0f, 0.0f, 0.0f, 1.0f} : Color{1.0f, 1.0f, 1.0f, 1.0f});
         }
     }
 
     CG_REQUIRE(DownsampleShadowScene(source, resolved));
     const f32 whiteCoverage = 1.0f - (105.0f / 225.0f);
-    const Color expectedEdge = ToneMapAces(Color{whiteCoverage, whiteCoverage, whiteCoverage, 1.0f});
+    const Color expectedEdge =
+        ToneMapAces(Color{whiteCoverage, whiteCoverage, whiteCoverage, 1.0f});
     const Color resolvedEdge = resolved.GetPixel(0, 0);
     const Color resolvedInterior = resolved.GetPixel(1, 0);
     CG_EXPECT_NEAR(resolvedEdge.r, expectedEdge.r, 1.0e-6f);
-    CG_EXPECT_NEAR(resolvedInterior.r, ToneMapAces(Color{1.0f, 1.0f, 1.0f, 1.0f}).r,
-                   1.0e-6f);
+    CG_EXPECT_NEAR(resolvedInterior.r, ToneMapAces(Color{1.0f, 1.0f, 1.0f, 1.0f}).r, 1.0e-6f);
 }
 
 CG_TEST(software_shadow_reverse_z_visibility_and_pcf)
@@ -528,12 +526,12 @@ CG_TEST(software_point_shadow_blends_across_cube_face_seams)
     const Vec3 position{0.0f, 0.0f, 0.5f};
     const Vec3 normal{0.0f, 0.0f, 1.0f};
     const Vec3 toLight{0.0f, 0.0f, 1.0f};
-    const f32 towardX = EvaluatePointShadowVisibility(
-        shadows, Vec3{1.0f, 0.99f, 0.0f}, position, normal, toLight);
-    const f32 towardY = EvaluatePointShadowVisibility(
-        shadows, Vec3{0.99f, 1.0f, 0.0f}, position, normal, toLight);
-    const f32 awayFromSeam = EvaluatePointShadowVisibility(
-        shadows, Vec3{1.0f, 0.5f, 0.0f}, position, normal, toLight);
+    const f32 towardX =
+        EvaluatePointShadowVisibility(shadows, Vec3{1.0f, 0.99f, 0.0f}, position, normal, toLight);
+    const f32 towardY =
+        EvaluatePointShadowVisibility(shadows, Vec3{0.99f, 1.0f, 0.0f}, position, normal, toLight);
+    const f32 awayFromSeam =
+        EvaluatePointShadowVisibility(shadows, Vec3{1.0f, 0.5f, 0.0f}, position, normal, toLight);
     CG_EXPECT_NEAR(towardX, towardY, 0.01f);
     CG_EXPECT_TRUE(towardX > 0.45f && towardX < 0.55f);
     CG_EXPECT_NEAR(awayFromSeam, 0.0f, 1.0e-6f);
@@ -615,8 +613,7 @@ CG_TEST(software_directional_shadow_rendering_keeps_subtexel_camera_motion_stabl
     config.shadowDistance = 32.0f;
     config.depthPadding = 24.0f;
     config.blendFraction = 0.15f;
-    const Vec3 lightTravel =
-        cyber::math::Normalize(Vec3{0.38f, -0.86f, 0.34f});
+    const Vec3 lightTravel = cyber::math::Normalize(Vec3{0.38f, -0.86f, 0.34f});
     DirectionalShadowCascadeSet first{};
     CG_REQUIRE(static_cast<bool>(
         BuildDirectionalShadowCascades(camera, 16.0f / 9.0f, lightTravel, config, first)));
@@ -624,8 +621,7 @@ CG_TEST(software_directional_shadow_rendering_keeps_subtexel_camera_motion_stabl
     const Vec3 lightRight =
         cyber::math::Normalize(cyber::math::Cross(lightTravel, Vec3{0.0f, 1.0f, 0.0f}));
     const f32 worldRadius = 1.0f / first.cascades[0].shadow.clipFromWorld[0].x;
-    const f32 texelWorldSize =
-        2.0f * worldRadius / static_cast<f32>(config.mapResolution);
+    const f32 texelWorldSize = 2.0f * worldRadius / static_cast<f32>(config.mapResolution);
     camera.position += lightRight * (texelWorldSize * 0.001f);
     DirectionalShadowCascadeSet moved{};
     CG_REQUIRE(static_cast<bool>(
@@ -650,7 +646,7 @@ CG_TEST(software_directional_shadow_rendering_keeps_subtexel_camera_motion_stabl
         VertexInput{Vec3{-30.0f, 0.0f, -30.0f}}, VertexInput{Vec3{30.0f, 0.0f, -30.0f}},
         VertexInput{Vec3{30.0f, 0.0f, 30.0f}},   VertexInput{Vec3{-30.0f, 0.0f, -30.0f}},
         VertexInput{Vec3{30.0f, 0.0f, 30.0f}},   VertexInput{Vec3{-30.0f, 0.0f, 30.0f}},
-        VertexInput{Vec3{-1.0f, 0.0f, -2.0f}},    VertexInput{Vec3{1.0f, 0.0f, -2.0f}},
+        VertexInput{Vec3{-1.0f, 0.0f, -2.0f}},   VertexInput{Vec3{1.0f, 0.0f, -2.0f}},
         VertexInput{Vec3{0.0f, 3.0f, -2.0f}},
     };
     PipelineStats firstStats[kMaxDirectionalShadowCascades]{};
@@ -660,8 +656,7 @@ CG_TEST(software_directional_shadow_rendering_keeps_subtexel_camera_motion_stabl
     invalidStats[0].pixels = 17;
     CG_EXPECT_FALSE(static_cast<bool>(RenderDirectionalShadowMaps(
         first, sceneSpan, cyber::memory::Span<DepthBuffer>(firstDepth, 1), heap, nullptr,
-        CullMode::None, false,
-        cyber::memory::Span<PipelineStats>(invalidStats, 1))));
+        CullMode::None, false, cyber::memory::Span<PipelineStats>(invalidStats, 1))));
     CG_EXPECT_EQ(invalidStats[0].pixels, cyber::core::u64{0});
     for (cyber::core::u32 index = 0; index < config.cascadeCount; ++index)
     {
@@ -670,13 +665,13 @@ CG_TEST(software_directional_shadow_rendering_keeps_subtexel_camera_motion_stabl
 
     CG_REQUIRE(static_cast<bool>(RenderDirectionalShadowMaps(
         first, sceneSpan,
-        cyber::memory::Span<DepthBuffer>(firstDepth, kMaxDirectionalShadowCascades), heap,
-        nullptr, CullMode::None, false,
+        cyber::memory::Span<DepthBuffer>(firstDepth, kMaxDirectionalShadowCascades), heap, nullptr,
+        CullMode::None, false,
         cyber::memory::Span<PipelineStats>(firstStats, kMaxDirectionalShadowCascades))));
     CG_REQUIRE(static_cast<bool>(RenderDirectionalShadowMaps(
         moved, sceneSpan,
-        cyber::memory::Span<DepthBuffer>(movedDepth, kMaxDirectionalShadowCascades), heap,
-        nullptr, CullMode::None, false,
+        cyber::memory::Span<DepthBuffer>(movedDepth, kMaxDirectionalShadowCascades), heap, nullptr,
+        CullMode::None, false,
         cyber::memory::Span<PipelineStats>(movedStats, kMaxDirectionalShadowCascades))));
 
     for (cyber::core::u32 cascade = 0; cascade < config.cascadeCount; ++cascade)
@@ -925,9 +920,9 @@ CG_TEST(software_shadow_scene_renders_a_measurable_soft_shadow)
     shadowRender.clipFromWorld = lightProjection * lightView;
     shadowRender.cullMode = CullMode::None;
     PipelineStats referenceShadowStats{};
-    CG_REQUIRE(static_cast<bool>(RenderShadowMap(
-        shadowRender, cyber::memory::Span<const VertexInput>(vertices, vertexCount),
-        referenceShadowDepth, nullptr, heap, &referenceShadowStats)));
+    CG_REQUIRE(static_cast<bool>(
+        RenderShadowMap(shadowRender, cyber::memory::Span<const VertexInput>(vertices, vertexCount),
+                        referenceShadowDepth, nullptr, heap, &referenceShadowStats)));
     CG_EXPECT_TRUE(referenceShadowStats.pixels > 0);
     PipelineStats highShadowStats{};
     CG_REQUIRE(static_cast<bool>(
@@ -1039,16 +1034,16 @@ CG_TEST(software_shadow_scene_renders_a_measurable_soft_shadow)
     CG_REQUIRE(fogDepth.IsValid());
     shadow.depth = &highShadowDepth;
     CG_REQUIRE(RenderShadowAcceptanceScene(heap, vertices, vertexCount, viewProjection, eye,
-                                           cameraForward, lightTravel, shadow, fogHighRes,
-                                           fogDepth, true));
+                                           cameraForward, lightTravel, shadow, fogHighRes, fogDepth,
+                                           true));
     CG_REQUIRE(DownsampleShadowScene(fogHighRes, fogShadowed, kFogSceneSupersample));
     CG_REQUIRE(static_cast<bool>(cyber::software::WriteImage(
         "phase28_shadowed_volumetric_fog.ppm", fogShadowed, heap,
         cyber::software::ImageWriteDesc{cyber::software::ImageFormat::Ppm, true})));
     shadow.depth = nullptr;
     CG_REQUIRE(RenderShadowAcceptanceScene(heap, vertices, vertexCount, viewProjection, eye,
-                                           cameraForward, lightTravel, shadow, fogHighRes,
-                                           fogDepth, true));
+                                           cameraForward, lightTravel, shadow, fogHighRes, fogDepth,
+                                           true));
     CG_REQUIRE(DownsampleShadowScene(fogHighRes, fogUnshadowed, kFogSceneSupersample));
     CG_REQUIRE(static_cast<bool>(cyber::software::WriteImage(
         "phase28_unshadowed_volumetric_fog.ppm", fogUnshadowed, heap,
@@ -1112,9 +1107,9 @@ CG_TEST(software_shadow_scene_renders_a_measurable_soft_shadow)
     DepthBuffer cascadeSceneDepth = MakeShadowMap(heap, kShadowSceneWidth, kShadowSceneHeight);
     CG_REQUIRE(cascadeColor.IsValid());
     CG_REQUIRE(cascadeSceneDepth.IsValid());
-    CG_REQUIRE(RenderShadowAcceptanceScene(
-        heap, vertices, vertexCount, viewProjection, eye, cameraForward, lightTravel,
-        ShadowMapView{}, cascadeColor, cascadeSceneDepth, false, &cascades));
+    CG_REQUIRE(RenderShadowAcceptanceScene(heap, vertices, vertexCount, viewProjection, eye,
+                                           cameraForward, lightTravel, ShadowMapView{},
+                                           cascadeColor, cascadeSceneDepth, false, &cascades));
     cyber::core::u32 cascadedShadowPixels = 0;
     f32 maximumCascadeShadowDifference = 0.0f;
     for (cyber::core::i32 y = 0; y < kShadowSceneHeight; ++y)
@@ -1132,8 +1127,7 @@ CG_TEST(software_shadow_scene_renders_a_measurable_soft_shadow)
             {
                 ++cascadedShadowPixels;
             }
-            maximumCascadeShadowDifference =
-                std::max(maximumCascadeShadowDifference, difference);
+            maximumCascadeShadowDifference = std::max(maximumCascadeShadowDifference, difference);
         }
     }
     CG_EXPECT_TRUE(cascadedShadowPixels > 100);

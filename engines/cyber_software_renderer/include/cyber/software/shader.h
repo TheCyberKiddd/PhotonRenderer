@@ -97,8 +97,8 @@ struct DepthOnlyShaderDesc
 // `stats` is optional and is zeroed on entry.
 [[nodiscard]] core::Status<core::Error>
 DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const VertexInput> vertices,
-                       DepthBuffer& depth, jobs::JobSystem* jobSystem,
-                       memory::Allocator& allocator, PipelineStats* stats = nullptr) noexcept;
+                       DepthBuffer& depth, jobs::JobSystem* jobSystem, memory::Allocator& allocator,
+                       PipelineStats* stats = nullptr) noexcept;
 
 // Runs the Phase 9 vertex pipeline over a triangle list.
 //

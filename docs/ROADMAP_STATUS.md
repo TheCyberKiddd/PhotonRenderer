@@ -1,6 +1,6 @@
-# CyberGraphics roadmap status
+# Photon Renderer roadmap status
 
-Snapshot: 2026-11-13
+Snapshot: 2026-11-14
 
 This is a factual project-state snapshot to help prepare a revised product
 roadmap. The phase names and intended outcomes follow
@@ -194,7 +194,13 @@ this document does not replace that roadmap or change any phase checkbox.
   vertex-pipeline fallback are. The full Debug suite passes 146/146 in 1053.90 s — 870.6 s of it the D3D12 GPU-driven suite under GPU-based validation, with the debug layer silent — and Release 146/146 in 78.47 s on this PC. See the
   [Phase 32 design](design/phase-32-gpu-driven.md) and
   [implementation report](reports/phase-32.md).
-- **Phases 33-44:** not started.
+- **Phase 33:** the BC1, BC4, BC5, and BC7 codec and CPU-side budgeted mip
+  streaming path are implemented and tested. An experimental CPU virtual
+  texture cache and sample are also present. The page pool is not bound to
+  D3D12 reserved resources, and streaming does not use GPU sampler feedback.
+  See the [Phase 33 design](design/phase-33-compression-streaming.md) and
+  [implementation report](reports/phase-33.md).
+- **Phases 34-44:** not started.
 - **Current PC:** Windows 10 Pro 22H2, Intel Core i5-6400 (4 cores), Intel HD
   Graphics 530 (1 GiB reported), Intel driver `31.0.101.2125` dated
   2023-05-24. The marker sample now submits and presents on this adapter after
@@ -286,7 +292,7 @@ this document does not replace that roadmap or change any phase checkbox.
 | Phase | Status | Intended outcome |
 |---|---|---|
 | 32. GPU-driven rendering and compute | Complete on D3D12 | GPU frustum, LOD, and Hi-Z occlusion culling with ordered compaction and one indirect-count draw; a million instances culled in two dispatches and drawn with one call, matching the CPU culler on every instance, at flat CPU cost. Real D3D12 indirect execution, async-compute culling and light culling behind a measured policy, and meshlets with a vertex-pipeline fallback. The mesh-shader pipeline is not implemented. See the Phase 32 design and report. |
-| 33. Texture compression and streaming | Not started | BCn compression, budgeted mip streaming/residency, and background loading. |
+| 33. Texture compression and streaming | Complete for CPU codec and streaming; experimental CPU virtual texturing | BC1, BC4, BC5, and BC7 codecs; budgeted asynchronous mip residency; virtual-texture cache/reference sample. D3D12 reserved-resource binding and GPU sampler feedback remain unimplemented. See the Phase 33 design and report. |
 | 34. Vulkan backend | Not started | Second explicit backend, synchronization/presentation/validation, and Linux/Android support. |
 | 35. Metal and other backends | Not started | Metal for Apple platforms; evaluate WebGPU/console only with deliberate scope/access. |
 | 36. Performance hardening | Not started | CPU/GPU/memory budgets, frame-time percentiles, pipeline warmup, and CI regression benchmarks. |

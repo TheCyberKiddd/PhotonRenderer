@@ -57,6 +57,16 @@ D3D12TimestampQueryHeapSlot* Resolve(D3D12Device& device, TimestampQueryHeapHand
     return slot.alive && slot.generation == handle.generation ? &slot : nullptr;
 }
 
+D3D12TileHeapSlot* Resolve(D3D12Device& device, TileHeapHandle handle) noexcept
+{
+    if (!handle.IsValid() || handle.index >= device.tileHeaps.Size())
+    {
+        return nullptr;
+    }
+    D3D12TileHeapSlot& slot = device.tileHeaps[handle.index];
+    return slot.alive && slot.generation == handle.generation ? &slot : nullptr;
+}
+
 D3D12BufferSlot* Resolve(D3D12Device& device, BufferHandle handle) noexcept
 {
     if (!handle.IsValid() || handle.index >= device.buffers.Size())
@@ -885,6 +895,19 @@ u32 D3D12ReportLeaks(const void* internal) noexcept
                    slot.desc.label != nullptr && slot.desc.label[0] != '\0' ? slot.desc.label
                                                                             : "unlabelled",
                    slot.desc.width, slot.desc.height);
+        }
+    }
+    for (usize index = 0; index < device.tileHeaps.Size(); ++index)
+    {
+        const D3D12TileHeapSlot& slot = device.tileHeaps[index];
+        if (slot.alive)
+        {
+            ++count;
+            CG_LOG(Warning, Rhi, "live tile heap %u generation %u: %s (%u tiles)", index,
+                   slot.generation,
+                   slot.desc.label != nullptr && slot.desc.label[0] != '\0' ? slot.desc.label
+                                                                            : "unlabelled",
+                   slot.desc.tileCount);
         }
     }
     for (usize index = 0; index < device.timestampQueryHeaps.Size(); ++index)

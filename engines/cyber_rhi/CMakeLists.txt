@@ -13,6 +13,7 @@ set(CYBER_RHI_SOURCES
     src/d3d12/d3d12_swapchain.cpp
     src/d3d12/d3d12_resources.cpp
     src/d3d12/d3d12_textures.cpp
+    src/d3d12/d3d12_tiles.cpp
     src/d3d12/gpu_markers.cpp
     src/d3d12/gpu_allocator.cpp
     src/device.cpp
@@ -25,6 +26,7 @@ set(CYBER_RHI_SOURCES
     src/retirement.cpp
     src/submission.cpp
     src/swapchain.cpp
+    src/tiling.cpp
 )
 
 set(CYBER_RHI_HEADERS
@@ -146,6 +148,12 @@ cyber_add_test(
 )
 
 cyber_add_test(
+    NAME rhi_reserved_texture
+    SOURCES tests/reserved_texture_test.cpp
+    DEPENDS rhi memory
+)
+
+cyber_add_test(
     NAME rhi_sampler
     SOURCES tests/sampler_test.cpp
     DEPENDS rhi memory
@@ -251,6 +259,11 @@ if(CYBER_RHI_ENABLE_D3D12)
     cyber_add_test(
         NAME rhi_d3d12_resources
         SOURCES tests/d3d12_resources_test.cpp
+        DEPENDS rhi memory
+    )
+    cyber_add_test(
+        NAME rhi_d3d12_reserved
+        SOURCES tests/d3d12_reserved_test.cpp
         DEPENDS rhi memory
     )
     cyber_add_test(

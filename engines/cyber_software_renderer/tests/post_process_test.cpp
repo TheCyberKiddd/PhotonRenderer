@@ -4,6 +4,7 @@
 #include <cyber/software/post_process.h>
 #include <cyber/test/test.h>
 
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -339,8 +340,7 @@ CG_TEST(ToneMapOperatorsRollOffWithoutClipping)
     CG_EXPECT_NEAR(base.r, 0.2f, 1.0e-5f);
 
     // Alpha passes through and a poisoned channel resolves to black.
-    const Color poisoned =
-        ApplyToneMap(Color{std::nanf(""), 0.0f, 0.0f, 0.25f}, 0.0f, aces);
+    const Color poisoned = ApplyToneMap(Color{std::nanf(""), 0.0f, 0.0f, 0.25f}, 0.0f, aces);
     CG_EXPECT_NEAR(poisoned.a, 0.25f, 1.0e-6f);
     CG_EXPECT_TRUE(std::isfinite(poisoned.r));
 }
@@ -350,8 +350,8 @@ CG_TEST(IdentityGradeIsANoOp)
     const ColorGradeSettings identity{};
     for (const f32 value : {0.0f, 0.18f, 0.5f, 1.0f})
     {
-        const Color graded = ApplyColorGrade(Color{value, value * 0.5f, value * 0.25f, 1.0f},
-                                             identity);
+        const Color graded =
+            ApplyColorGrade(Color{value, value * 0.5f, value * 0.25f, 1.0f}, identity);
         CG_EXPECT_NEAR(graded.r, value, 1.0e-5f);
         CG_EXPECT_NEAR(graded.g, value * 0.5f, 1.0e-5f);
         CG_EXPECT_NEAR(graded.b, value * 0.25f, 1.0e-5f);
@@ -499,10 +499,9 @@ CG_TEST(DisabledPassesAreReportedAndCostNothing)
     settings.enableColorGrade = false;
 
     PostProcessTimings timings{};
-    CG_REQUIRE(stack
-                   .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                            &timings)
-                   .IsOk());
+    CG_REQUIRE(
+        stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, &timings)
+            .IsOk());
 
     for (const PassTiming& timing : timings.passes)
     {
@@ -541,10 +540,9 @@ CG_TEST(PassesWithoutTheirInputsAreSkippedNotFailed)
     settings.enableBloom = false;
 
     PostProcessTimings timings{};
-    CG_REQUIRE(stack
-                   .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                            &timings)
-                   .IsOk());
+    CG_REQUIRE(
+        stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, &timings)
+            .IsOk());
     CG_EXPECT_FALSE(timings.passes[static_cast<i32>(PostProcessPass::AmbientOcclusion)].executed);
     CG_EXPECT_FALSE(timings.passes[static_cast<i32>(PostProcessPass::MotionBlur)].executed);
     CG_EXPECT_FALSE(timings.passes[static_cast<i32>(PostProcessPass::DepthOfField)].executed);
@@ -577,10 +575,9 @@ CG_TEST(BloomSpreadsEnergyAroundAHighlight)
     settings.bloom.threshold = 1.0f;
 
     PostProcessTimings timings{};
-    CG_REQUIRE(stack
-                   .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                            &timings)
-                   .IsOk());
+    CG_REQUIRE(
+        stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, &timings)
+            .IsOk());
     CG_EXPECT_TRUE(timings.passes[static_cast<i32>(PostProcessPass::Bloom)].executed);
 
     // Far from the highlight the frame was black; bloom must have put light
@@ -592,10 +589,9 @@ CG_TEST(BloomSpreadsEnergyAroundAHighlight)
 
     // With bloom off the same black pixel stays black.
     settings.enableBloom = false;
-    CG_REQUIRE(stack
-                   .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                            &timings)
-                   .IsOk());
+    CG_REQUIRE(
+        stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, &timings)
+            .IsOk());
     CG_EXPECT_NEAR(Luminance(destination.GetPixel(20, 32)), 0.0f, 1.0e-6f);
 }
 
@@ -692,7 +688,8 @@ CG_TEST(DepthOfFieldBlursTheBackgroundAndKeepsTheFocalPlaneSharp)
         for (i32 x = 0; x < kSize; ++x)
         {
             const bool white = ((x / 4) % 2) == 0;
-            color.SetPixel(x, y, white ? Color{1.0f, 1.0f, 1.0f, 1.0f} : Color{0.0f, 0.0f, 0.0f, 1.0f});
+            color.SetPixel(x, y,
+                           white ? Color{1.0f, 1.0f, 1.0f, 1.0f} : Color{0.0f, 0.0f, 0.0f, 1.0f});
             depth.TestAndWrite(x, y, DepthForDistance(distance, kNear, kFar));
         }
     }
@@ -723,8 +720,8 @@ CG_TEST(DepthOfFieldBlursTheBackgroundAndKeepsTheFocalPlaneSharp)
     CG_EXPECT_TRUE(timings.passes[static_cast<i32>(PostProcessPass::DepthOfField)].executed);
 
     // Contrast across one checker edge, in focus and behind it.
-    const f32 sharpStep = std::abs(Luminance(destination.GetPixel(3, 8)) -
-                                   Luminance(destination.GetPixel(4, 8)));
+    const f32 sharpStep =
+        std::abs(Luminance(destination.GetPixel(3, 8)) - Luminance(destination.GetPixel(4, 8)));
     const f32 blurredStep = std::abs(Luminance(destination.GetPixel(3, kSize - 8)) -
                                      Luminance(destination.GetPixel(4, kSize - 8)));
     CG_EXPECT_TRUE(sharpStep > 0.9f);
@@ -766,10 +763,9 @@ CG_TEST(MotionBlurFollowsTheVelocityBuffer)
     settings.motionBlur.sampleCount = 16;
 
     PostProcessTimings timings{};
-    CG_REQUIRE(stack
-                   .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                            &timings)
-                   .IsOk());
+    CG_REQUIRE(
+        stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, &timings)
+            .IsOk());
     CG_EXPECT_TRUE(timings.passes[static_cast<i32>(PostProcessPass::MotionBlur)].executed);
 
     // The bar smears along x and not along y.
@@ -788,7 +784,8 @@ CG_TEST(ChainIsDeterministicWithAndWithoutJobs)
     constexpr f32 kFar = 100.0f;
 
     HeapAllocator heap;
-    auto jobsCreated = cyber::jobs::JobSystem::Create(cyber::jobs::JobSystem::Desc{4, nullptr}, heap);
+    auto jobsCreated =
+        cyber::jobs::JobSystem::Create(cyber::jobs::JobSystem::Desc{4, nullptr}, heap);
     CG_REQUIRE(jobsCreated.IsOk());
     cyber::jobs::JobSystem jobSystem = std::move(jobsCreated).Value();
 
@@ -854,9 +851,9 @@ CG_TEST(ChainIsDeterministicWithAndWithoutJobs)
     CG_REQUIRE(parallelStack.IsOk());
     PostProcessStack parallelChain = std::move(parallelStack).Value();
     settings.useJobs = true;
-    CG_REQUIRE(parallelChain
-                   .Execute(inputs, parallel, settings, view, 1.0f / 60.0f, &jobSystem, nullptr)
-                   .IsOk());
+    CG_REQUIRE(
+        parallelChain.Execute(inputs, parallel, settings, view, 1.0f / 60.0f, &jobSystem, nullptr)
+            .IsOk());
 
     CG_EXPECT_TRUE(ImagesEqual(serial, parallel));
 }
@@ -884,10 +881,9 @@ CG_TEST(ExposureAdaptationIsCarriedBetweenFrames)
     // Frame one: a dark scene, which snaps.
     color.Clear(Color{0.02f, 0.02f, 0.02f, 1.0f});
     PostProcessTimings first{};
-    CG_REQUIRE(stack
-                   .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                            &first)
-                   .IsOk());
+    CG_REQUIRE(
+        stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, &first)
+            .IsOk());
     const f32 darkEv = first.exposureEv;
     CG_EXPECT_TRUE(darkEv > 1.0f);
 
@@ -895,10 +891,9 @@ CG_TEST(ExposureAdaptationIsCarriedBetweenFrames)
     // the camera a sixtieth of a stop, not the whole way.
     color.Clear(Color{4.0f, 4.0f, 4.0f, 1.0f});
     PostProcessTimings second{};
-    CG_REQUIRE(stack
-                   .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                            &second)
-                   .IsOk());
+    CG_REQUIRE(
+        stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, &second)
+            .IsOk());
     CG_EXPECT_NEAR(second.exposureEv, darkEv - 1.0f / 60.0f, 1.0e-3f);
 
     // The image darkens as the camera stops down over the following seconds.
@@ -907,10 +902,9 @@ CG_TEST(ExposureAdaptationIsCarriedBetweenFrames)
     const f32 previousMean = MeanLuminance(destination);
     for (i32 frame = 0; frame < 600; ++frame)
     {
-        CG_REQUIRE(stack
-                       .Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr,
-                                nullptr)
-                       .IsOk());
+        CG_REQUIRE(
+            stack.Execute(inputs, destination, settings, MakeView(), 1.0f / 60.0f, nullptr, nullptr)
+                .IsOk());
     }
     const f32 settledMean = MeanLuminance(destination);
     CG_EXPECT_TRUE(settledMean < previousMean);

@@ -1,10 +1,11 @@
+#include "guard_band.h"
+#include "scratch_allocator.h"
+
 #include <cyber/memory/dynamic_array.h>
 #include <cyber/software/depth_buffer.h>
 #include <cyber/software/pipeline.h>
 #include <cyber/software/raster.h>
 #include <cyber/software/shader.h>
-
-#include "guard_band.h"
 
 #include <cmath>
 #include <utility>
@@ -45,14 +46,14 @@ f32 NearDistance(const ShadedClipVertex& vertex) noexcept
 
 bool IsFinite(const Vec4& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) &&
-           std::isfinite(value.w);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z) &&
+           math::IsFinite(value.w);
 }
 
 bool IsValidViewport(const Viewport& viewport) noexcept
 {
-    return std::isfinite(viewport.x) && std::isfinite(viewport.y) &&
-           std::isfinite(viewport.width) && std::isfinite(viewport.height) &&
+    return math::IsFinite(viewport.x) && math::IsFinite(viewport.y) &&
+           math::IsFinite(viewport.width) && math::IsFinite(viewport.height) &&
            viewport.width > 0.0f && viewport.height > 0.0f;
 }
 
@@ -95,7 +96,7 @@ ShadedClipPolygon ClipShadedNearPlane(const ShadedClipVertex& v0, const ShadedCl
         }
 
         const f32 denominator = currentDistance - nextDistance;
-        if (denominator == 0.0f || !std::isfinite(denominator))
+        if (denominator == 0.0f || !math::IsFinite(denominator))
         {
             continue;
         }
@@ -179,7 +180,7 @@ DepthOnlyClipPolygon ClipDepthOnlyNearPlane(const DepthOnlyClipVertex& v0,
         }
 
         const f32 denominator = currentDistance - nextDistance;
-        if (denominator == 0.0f || !std::isfinite(denominator))
+        if (denominator == 0.0f || !math::IsFinite(denominator))
         {
             continue;
         }
@@ -217,10 +218,11 @@ math::Vec4 TransformDepthOnlyVertexShader(const VertexInput& input, const void* 
     return *clipFromObject * Vec4{input.position.x, input.position.y, input.position.z, 1.0f};
 }
 
-core::Status<core::Error>
-DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const VertexInput> vertices,
-                       DepthBuffer& depth, jobs::JobSystem* jobSystem,
-                       memory::Allocator& allocator, PipelineStats* stats) noexcept
+core::Status<core::Error> DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc,
+                                                 memory::Span<const VertexInput> vertices,
+                                                 DepthBuffer& depth, jobs::JobSystem* jobSystem,
+                                                 memory::Allocator& allocator,
+                                                 PipelineStats* stats) noexcept
 {
     if (stats != nullptr)
     {
@@ -264,7 +266,8 @@ DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const Verte
             core::Error{core::ErrorCode::Overflow, "triangle count is too large"});
     }
 
-    memory::DynamicArray<DepthOnlyRasterTriangle> triangles(allocator);
+    detail::ScratchScope scratch;
+    memory::DynamicArray<DepthOnlyRasterTriangle> triangles(scratch.Allocator());
     if (!triangles.TryReserve(inputTriangles * 2))
     {
         return core::Status<core::Error>::Err(
@@ -277,14 +280,18 @@ DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const Verte
     u64 invalid = 0;
     u64 submitted = 0;
     const guard::Band band = guard::MakeBand(desc.pipeline.viewport);
+    // Guard-band clip buffers, hoisted out of the triangle loop: the vertex
+    // type carries default member initializers, so declaring the arrays per
+    // triangle constructed both on every triangle, clipped or not.
+    DepthOnlyClipVertex guardPolygon[guard::kMaxGuardPolygonVertices];
+    DepthOnlyClipVertex guardScratch[guard::kMaxGuardPolygonVertices];
 
     for (usize index = 0; index < inputTriangles; ++index)
     {
         DepthOnlyClipVertex input[3];
         for (u32 corner = 0; corner < 3; ++corner)
         {
-            input[corner].position =
-                desc.vertexShader(vertices[index * 3 + corner], desc.userData);
+            input[corner].position = desc.vertexShader(vertices[index * 3 + corner], desc.userData);
         }
 
         if (!IsFinite(input[0].position) || !IsFinite(input[1].position) ||
@@ -309,8 +316,6 @@ DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const Verte
             ++clipped;
         }
 
-        DepthOnlyClipVertex guardPolygon[guard::kMaxGuardPolygonVertices];
-        DepthOnlyClipVertex guardScratch[guard::kMaxGuardPolygonVertices];
         u32 guardCount = nearClipped.count;
         for (u32 corner = 0; corner < guardCount; ++corner)
         {
@@ -319,8 +324,8 @@ DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const Verte
         if (guard::HasPositiveW(guardPolygon, guardCount) &&
             !guard::IsInside(guardPolygon, guardCount, band))
         {
-            guardCount = guard::Clip(guardPolygon, guardCount, band, guardScratch,
-                                     LerpDepthOnlyClipVertex);
+            guardCount =
+                guard::Clip(guardPolygon, guardCount, band, guardScratch, LerpDepthOnlyClipVertex);
             if (guardCount == 0)
             {
                 ++offscreen;
@@ -342,7 +347,7 @@ DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const Verte
             for (u32 corner = 0; corner < 3; ++corner)
             {
                 const f32 w = corners[corner]->position.w;
-                if (!(w > 0.0f) || !std::isfinite(w))
+                if (!(w > 0.0f) || !math::IsFinite(w))
                 {
                     usable = false;
                     break;
@@ -355,7 +360,7 @@ DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const Verte
                     desc.pipeline.viewport.x + (0.5f * ndcX + 0.5f) * desc.pipeline.viewport.width;
                 const f32 screenY =
                     desc.pipeline.viewport.y + (0.5f - 0.5f * ndcY) * desc.pipeline.viewport.height;
-                if (!std::isfinite(screenX) || !std::isfinite(screenY) || !std::isfinite(ndcZ))
+                if (!math::IsFinite(screenX) || !math::IsFinite(screenY) || !math::IsFinite(ndcZ))
                 {
                     usable = false;
                     break;
@@ -408,8 +413,8 @@ DrawDepthOnlyTriangles(const DepthOnlyShaderDesc& desc, memory::Span<const Verte
             }
             if (!triangles.TryPushBack(output))
             {
-                return core::Status<core::Error>::Err(
-                    core::Error{core::ErrorCode::Internal, "failed to store a depth-only triangle"});
+                return core::Status<core::Error>::Err(core::Error{
+                    core::ErrorCode::Internal, "failed to store a depth-only triangle"});
             }
             ++submitted;
         }
@@ -524,7 +529,8 @@ DrawShadedTriangles(const ShaderDesc& desc, memory::Span<const VertexInput> vert
             core::Error{core::ErrorCode::Overflow, "triangle count is too large"});
     }
 
-    memory::DynamicArray<ShadedRasterTriangle> triangles(allocator);
+    detail::ScratchScope scratch;
+    memory::DynamicArray<ShadedRasterTriangle> triangles(scratch.Allocator());
     if (!triangles.TryReserve(inputTriangles * 2))
     {
         return core::Status<core::Error>::Err(
@@ -537,6 +543,11 @@ DrawShadedTriangles(const ShaderDesc& desc, memory::Span<const VertexInput> vert
     u64 invalid = 0;
     u64 submitted = 0;
     const guard::Band band = guard::MakeBand(desc.pipeline.viewport);
+    // Guard-band clip buffers, hoisted out of the triangle loop: the vertex
+    // type carries default member initializers, so declaring the arrays per
+    // triangle constructed both on every triangle, clipped or not.
+    ShadedClipVertex guardPolygon[guard::kMaxGuardPolygonVertices];
+    ShadedClipVertex guardScratch[guard::kMaxGuardPolygonVertices];
 
     for (usize index = 0; index < inputTriangles; ++index)
     {
@@ -574,8 +585,6 @@ DrawShadedTriangles(const ShaderDesc& desc, memory::Span<const VertexInput> vert
             ++clipped;
         }
 
-        ShadedClipVertex guardPolygon[guard::kMaxGuardPolygonVertices];
-        ShadedClipVertex guardScratch[guard::kMaxGuardPolygonVertices];
         u32 guardCount = nearClipped.count;
         for (u32 corner = 0; corner < guardCount; ++corner)
         {
@@ -584,8 +593,8 @@ DrawShadedTriangles(const ShaderDesc& desc, memory::Span<const VertexInput> vert
         if (guard::HasPositiveW(guardPolygon, guardCount) &&
             !guard::IsInside(guardPolygon, guardCount, band))
         {
-            guardCount = guard::Clip(guardPolygon, guardCount, band, guardScratch,
-                                     LerpShadedClipVertex);
+            guardCount =
+                guard::Clip(guardPolygon, guardCount, band, guardScratch, LerpShadedClipVertex);
             if (guardCount == 0)
             {
                 ++offscreen;
@@ -607,7 +616,7 @@ DrawShadedTriangles(const ShaderDesc& desc, memory::Span<const VertexInput> vert
             for (u32 corner = 0; corner < 3; ++corner)
             {
                 const f32 w = corners[corner]->position.w;
-                if (!(w > 0.0f) || !std::isfinite(w))
+                if (!(w > 0.0f) || !math::IsFinite(w))
                 {
                     usable = false;
                     break;
@@ -620,7 +629,7 @@ DrawShadedTriangles(const ShaderDesc& desc, memory::Span<const VertexInput> vert
                     desc.pipeline.viewport.x + (0.5f * ndcX + 0.5f) * desc.pipeline.viewport.width;
                 const f32 screenY =
                     desc.pipeline.viewport.y + (0.5f - 0.5f * ndcY) * desc.pipeline.viewport.height;
-                if (!std::isfinite(screenX) || !std::isfinite(screenY) || !std::isfinite(ndcZ))
+                if (!math::IsFinite(screenX) || !math::IsFinite(screenY) || !math::IsFinite(ndcZ))
                 {
                     usable = false;
                     break;

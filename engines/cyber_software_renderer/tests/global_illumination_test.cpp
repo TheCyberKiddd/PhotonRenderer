@@ -506,10 +506,22 @@ CG_TEST(software_gi_bake_is_deterministic_across_jobs)
     CG_REQUIRE(BakeIrradianceVolume(scene, bake, parallel, nullptr, &jobs.Value()).IsOk());
     jobs.Value().Shutdown();
 
+    // Bit-exact, member by member. A whole-struct memcmp also compared the
+    // padding after the u8 state, whose bytes are whatever the baking thread's
+    // stack held, so the test passed or failed by accident of thread layout.
     for (u32 index = 0; index < serial.ProbeCount(); ++index)
     {
-        CG_EXPECT_EQ(
-            std::memcmp(&serial.Probe(index), &parallel.Probe(index), sizeof(IrradianceProbe)), 0);
+        const IrradianceProbe& a = serial.Probe(index);
+        const IrradianceProbe& b = parallel.Probe(index);
+        CG_EXPECT_EQ(std::memcmp(a.radiance.coefficients, b.radiance.coefficients,
+                                 sizeof(a.radiance.coefficients)),
+                     0);
+        CG_EXPECT_EQ(std::memcmp(a.meanDistance, b.meanDistance, sizeof(a.meanDistance)), 0);
+        CG_EXPECT_EQ(std::memcmp(a.meanDistanceSquared, b.meanDistanceSquared,
+                                 sizeof(a.meanDistanceSquared)),
+                     0);
+        CG_EXPECT_EQ(std::memcmp(&a.backfaceFraction, &b.backfaceFraction, sizeof(f32)), 0);
+        CG_EXPECT_TRUE(a.state == b.state);
     }
     // The red box is a solid in the open; a probe is classified Inside only if
     // it falls within the box, and no probe of this lattice does.

@@ -31,7 +31,7 @@ f32 Luminance(f32 r, f32 g, f32 b) noexcept
 
 f32 Finite(f32 value) noexcept
 {
-    return std::isfinite(value) ? value : 0.0f;
+    return math::IsFinite(value) ? value : 0.0f;
 }
 
 void RunRows(jobs::JobSystem* jobSystem, bool useJobs, i32 rows, jobs::ParallelFunction function,
@@ -96,8 +96,8 @@ void DecodeGuidesRow(void* userData, u32 row) noexcept
         math::Vec3 normal{encoded.r * 2.0f - 1.0f, encoded.g * 2.0f - 1.0f,
                           encoded.b * 2.0f - 1.0f};
         const f32 length = math::Length(normal);
-        normal = length > 1.0e-6f && std::isfinite(length) ? normal * (1.0f / length)
-                                                           : math::Vec3{0.0f, 0.0f, 1.0f};
+        normal = length > 1.0e-6f && math::IsFinite(length) ? normal * (1.0f / length)
+                                                            : math::Vec3{0.0f, 0.0f, 1.0f};
         context.currentNormal[pixel * 3 + 0] = normal.x;
         context.currentNormal[pixel * 3 + 1] = normal.y;
         context.currentNormal[pixel * 3 + 2] = normal.z;
@@ -581,16 +581,16 @@ core::Status<core::Error> SpatioTemporalDenoiser::Denoise(const Framebuffer& noi
                                "denoiser guide buffer missing or mismatched");
     }
     if (!(guides.nearPlane > 0.0f) || !(guides.farPlane > guides.nearPlane) ||
-        !std::isfinite(guides.farPlane))
+        !math::IsFinite(guides.farPlane))
     {
         return StatusType::Err(ErrorCode::InvalidArgument, "denoiser depth range is invalid");
     }
     if (!(desc.temporalAlpha > 0.0f) || desc.temporalAlpha > 1.0f || desc.maxHistoryLength < 1 ||
         desc.maxHistoryLength > 255 || desc.iterations > kMaxDenoiserIterations ||
-        !(desc.depthRejectRelative > 0.0f) || !std::isfinite(desc.normalRejectCosine) ||
+        !(desc.depthRejectRelative > 0.0f) || !math::IsFinite(desc.normalRejectCosine) ||
         !(desc.depthSigma > 0.0f) || !(desc.normalPower >= 0.0f) || !(desc.luminanceSigma > 0.0f) ||
-        !std::isfinite(desc.luminanceSigma) || !std::isfinite(desc.depthSigma) ||
-        !std::isfinite(desc.normalPower))
+        !math::IsFinite(desc.luminanceSigma) || !math::IsFinite(desc.depthSigma) ||
+        !math::IsFinite(desc.normalPower))
     {
         return StatusType::Err(ErrorCode::InvalidArgument, "denoiser descriptor out of range");
     }

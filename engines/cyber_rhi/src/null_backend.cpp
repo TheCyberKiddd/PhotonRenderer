@@ -74,10 +74,26 @@ struct NullBuffer
 
 // A texture's record. `states` holds one entry per `(mip, array layer)` and is
 // likewise owned by the device's allocation list.
+struct NullTileEntry
+{
+    TileHeapHandle heap;
+    u32 tile = 0;
+};
+
 struct NullTexture
 {
     TextureDesc desc{};
     ResourceState* states = nullptr;
+    // Reserved textures only: the tiling and one entry per tile, in
+    // `validation::TileLinearIndex` order. An entry whose heap no longer
+    // resolves reads as unmapped.
+    TextureTiling tiling{};
+    NullTileEntry* tiles = nullptr;
+};
+
+struct NullTileHeap
+{
+    TileHeapDesc desc{};
 };
 
 // A view borrows its texture; its descriptor already names the texture handle.
@@ -247,7 +263,7 @@ struct NullDevice
           textures(allocator), views(allocator), samplers(allocator), shaders(allocator),
           bindGroupLayouts(allocator), bindGroups(allocator), pipelineLayouts(allocator),
           pipelines(allocator), pipelineCaches(allocator), commandLists(allocator),
-          swapChains(allocator), liveViews(allocator), allocations(allocator)
+          swapChains(allocator), tileHeaps(allocator), liveViews(allocator), allocations(allocator)
     {
     }
 
@@ -286,6 +302,7 @@ struct NullDevice
     // not move when another list is created.
     SlotMap<NullCommandList*, CommandListTag> commandLists;
     SlotMap<NullSwapChain*, SwapChainTag> swapChains;
+    SlotMap<NullTileHeap, TileHeapTag> tileHeaps;
     // What each queue was last told to do. A query, not a control: submission
     // applies its effects immediately in this backend.
     SubmissionInfo lastSubmission[kQueueKindCount] = {};
@@ -388,10 +405,11 @@ void CopyName(char (&destination)[kAdapterNameBytes], const char* source) noexce
     // anisotropic filtering are core on every target this project ships to;
     // reporting them here keeps the valid path testable, and the `Unsupported`
     // branch is exercised by the D3D12 backend's conformance tests in Phase 14.
-    capabilities.features =
-        Features::Of(Feature::Compute) | Feature::IndirectDraw | Feature::MultiDrawIndirect |
-        Feature::IndirectDrawCount | Feature::TimelineFences | Feature::DebugMarkers |
-        Feature::StorageTextures | Feature::AnisotropicFiltering | Feature::SwapchainTearing;
+    capabilities.features = Features::Of(Feature::Compute) | Feature::IndirectDraw |
+                            Feature::MultiDrawIndirect | Feature::IndirectDrawCount |
+                            Feature::TimelineFences | Feature::DebugMarkers |
+                            Feature::StorageTextures | Feature::AnisotropicFiltering |
+                            Feature::SwapchainTearing | Feature::ReservedTextures;
     return capabilities;
 }
 
@@ -1052,10 +1070,31 @@ ResourceState NullBufferState(const void* internal, BufferHandle handle) noexcep
                            "null backend: texture allocation list growth failed");
     }
 
+    void* tileMemory = nullptr;
+    if (desc.reserved)
+    {
+        record.tiling = ComputeStandardTiling(desc);
+        const usize tileBytes =
+            static_cast<usize>(record.tiling.totalTileCount) * sizeof(NullTileEntry);
+        tileMemory = device.allocator->Allocate(tileBytes, alignof(NullTileEntry));
+        if (tileMemory == nullptr || !device.allocations.TryPushBack(tileMemory))
+        {
+            device.allocator->Deallocate(tileMemory);
+            ReleaseAllocation(device, memory);
+            return StatusError(ErrorCode::Internal, "null backend: tile table allocation failed");
+        }
+        record.tiles = static_cast<NullTileEntry*>(tileMemory);
+        for (u32 index = 0; index < record.tiling.totalTileCount; ++index)
+        {
+            new (&record.tiles[index]) NullTileEntry{};
+        }
+    }
+
     const TextureHandle handle = device.textures.Insert(std::move(record));
     if (!handle.IsValid())
     {
         ReleaseAllocation(device, memory);
+        ReleaseAllocation(device, tileMemory);
         return StatusError(ErrorCode::Internal, "null backend: texture table growth failed");
     }
     *out = handle;
@@ -1110,11 +1149,13 @@ Status<Error> NullDestroyTexture(void* internal, TextureHandle handle) noexcept
                            "null backend: texture handle is stale or invalid");
     }
     ResourceState* states = texture->states;
+    NullTileEntry* tiles = texture->tiles;
     // A view of a destroyed texture must stop resolving. The caller's handles
     // are invalidated here rather than left dangling at freed state.
     RetireViewsOf(device, handle);
     (void)device.textures.Remove(handle);
     ReleaseAllocation(device, states);
+    ReleaseAllocation(device, tiles);
     return Status<Error>::Ok();
 }
 
@@ -1144,6 +1185,147 @@ TextureInfo NullTextureInfo(const void* internal, TextureHandle handle) noexcept
     info.sampleCount = texture->desc.sampleCount;
     info.lifetime = texture->desc.lifetime;
     info.sizeBytes = TextureByteSize(texture->desc);
+    info.reserved = texture->desc.reserved;
+    if (texture->desc.reserved)
+    {
+        // A reserved texture owns no memory; its bytes are in tile heaps.
+        info.sizeBytes = 0;
+    }
+    return info;
+}
+
+// ---------------------------------------------------------------------------
+// Reserved textures and tile heaps (Phase 33)
+// ---------------------------------------------------------------------------
+
+Status<Error> NullCreateTileHeap(void* internal, const TileHeapDesc& desc,
+                                 TileHeapHandle* out) noexcept
+{
+    if (internal == nullptr || out == nullptr)
+    {
+        return StatusError(ErrorCode::InvalidArgument,
+                           "null backend: tile heap creation needs a device and an output handle");
+    }
+    if (desc.tileCount == 0)
+    {
+        return StatusError(ErrorCode::InvalidArgument, "null backend: a tile heap needs tiles");
+    }
+    auto& device = *static_cast<NullDevice*>(internal);
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    if (!device.capabilities.features.Has(Feature::ReservedTextures))
+    {
+        return StatusError(ErrorCode::Unsupported, "null backend: reserved textures are disabled");
+    }
+    NullTileHeap record;
+    record.desc = desc;
+    const TileHeapHandle handle = device.tileHeaps.Insert(std::move(record));
+    if (!handle.IsValid())
+    {
+        return StatusError(ErrorCode::Internal, "null backend: tile heap table growth failed");
+    }
+    *out = handle;
+    return Status<Error>::Ok();
+}
+
+Status<Error> NullDestroyTileHeap(void* internal, TileHeapHandle heap) noexcept
+{
+    if (internal == nullptr)
+    {
+        return StatusError(ErrorCode::InvalidArgument, "null backend: device is null");
+    }
+    auto& device = *static_cast<NullDevice*>(internal);
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    if (!device.tileHeaps.Remove(heap))
+    {
+        return StatusError(ErrorCode::InvalidArgument,
+                           "null backend: tile heap handle is stale or invalid");
+    }
+    return Status<Error>::Ok();
+}
+
+TextureTiling NullTextureTiling(const void* internal, TextureHandle handle) noexcept
+{
+    if (internal == nullptr)
+    {
+        return TextureTiling{};
+    }
+    const auto& device = *static_cast<const NullDevice*>(internal);
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    const NullTexture* texture = device.textures.Get(handle);
+    return texture != nullptr && texture->desc.reserved ? texture->tiling : TextureTiling{};
+}
+
+Status<Error> NullUpdateTileMappings(void* internal, QueueKind queue,
+                                     memory::Span<const TileMapping> mappings) noexcept
+{
+    if (internal == nullptr)
+    {
+        return StatusError(ErrorCode::InvalidArgument, "null backend: device is null");
+    }
+    if (static_cast<u32>(queue) >= kQueueKindCount)
+    {
+        return StatusError(ErrorCode::InvalidArgument, "null backend: queue kind is invalid");
+    }
+    auto& device = *static_cast<NullDevice*>(internal);
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    // Validate the whole batch before applying any of it, as documented.
+    for (usize index = 0; index < mappings.Size(); ++index)
+    {
+        const TileMapping& mapping = mappings[index];
+        const NullTexture* texture = device.textures.Get(mapping.texture);
+        const NullTileHeap* heap =
+            mapping.heap.IsValid() ? device.tileHeaps.Get(mapping.heap) : nullptr;
+        Error error{};
+        const TextureTiling tiling =
+            texture != nullptr && texture->desc.reserved ? texture->tiling : TextureTiling{};
+        if (!validation::ValidateTileMapping(tiling, mapping,
+                                             heap != nullptr ? heap->desc.tileCount : 0,
+                                             heap != nullptr, &error))
+        {
+            return Status<Error>::Err(error);
+        }
+    }
+    for (usize index = 0; index < mappings.Size(); ++index)
+    {
+        const TileMapping& mapping = mappings[index];
+        NullTexture* texture = device.textures.Get(mapping.texture);
+        NullTileEntry& entry =
+            texture->tiles[validation::TileLinearIndex(texture->tiling, mapping)];
+        entry.heap = mapping.heap;
+        entry.tile = mapping.heap.IsValid() ? mapping.heapTile : 0;
+    }
+    return Status<Error>::Ok();
+}
+
+TileMappingInfo NullTileMapping(const void* internal, const TileMapping& tile) noexcept
+{
+    TileMappingInfo info;
+    if (internal == nullptr)
+    {
+        return info;
+    }
+    const auto& device = *static_cast<const NullDevice*>(internal);
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    const NullTexture* texture = device.textures.Get(tile.texture);
+    if (texture == nullptr || !texture->desc.reserved)
+    {
+        return info;
+    }
+    TileMapping probe = tile;
+    probe.heap = TileHeapHandle{};
+    if (!validation::ValidateTileMapping(texture->tiling, probe, 0, false, nullptr))
+    {
+        return info;
+    }
+    const NullTileEntry& entry =
+        texture->tiles[validation::TileLinearIndex(texture->tiling, probe)];
+    // A tile whose heap was destroyed reads as unmapped.
+    if (entry.heap.IsValid() && device.tileHeaps.Get(entry.heap) != nullptr)
+    {
+        info.mapped = true;
+        info.heap = entry.heap;
+        info.heapTile = entry.tile;
+    }
     return info;
 }
 
@@ -5113,6 +5295,11 @@ void NullDestroyDevice(void* internal) noexcept
         interface.destroyTexture = &NullDestroyTexture;
         interface.textureInfo = &NullTextureInfo;
         interface.createTextureView = &NullCreateTextureView;
+        interface.createTileHeap = &NullCreateTileHeap;
+        interface.destroyTileHeap = &NullDestroyTileHeap;
+        interface.textureTiling = &NullTextureTiling;
+        interface.updateTileMappings = &NullUpdateTileMappings;
+        interface.tileMapping = &NullTileMapping;
         interface.destroyTextureView = &NullDestroyTextureView;
         interface.textureViewInfo = &NullTextureViewInfo;
         interface.textureState = &NullTextureState;

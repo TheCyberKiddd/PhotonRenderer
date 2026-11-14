@@ -20,14 +20,14 @@ constexpr f32 kInversePi = 1.0f / kPi;
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 math::Vec3 FiniteNonNegative(const math::Vec3& value) noexcept
 {
-    return math::Vec3{std::isfinite(value.x) && value.x > 0.0f ? value.x : 0.0f,
-                      std::isfinite(value.y) && value.y > 0.0f ? value.y : 0.0f,
-                      std::isfinite(value.z) && value.z > 0.0f ? value.z : 0.0f};
+    return math::Vec3{math::IsFinite(value.x) && value.x > 0.0f ? value.x : 0.0f,
+                      math::IsFinite(value.y) && value.y > 0.0f ? value.y : 0.0f,
+                      math::IsFinite(value.z) && value.z > 0.0f ? value.z : 0.0f};
 }
 
 math::Vec3 Saturate(const math::Vec3& value) noexcept
@@ -49,7 +49,7 @@ f32 MaxComponent(const math::Vec3& value) noexcept
 
 f32 SmoothRangeFade(f32 distance, f32 range) noexcept
 {
-    if (!std::isfinite(distance) || !std::isfinite(range) || distance < 0.0f || range <= 0.0f ||
+    if (!math::IsFinite(distance) || !math::IsFinite(range) || distance < 0.0f || range <= 0.0f ||
         distance >= range)
     {
         return 0.0f;
@@ -261,8 +261,9 @@ math::Vec3 SkyRadiance(const GiScene& scene, const math::Vec3& direction) noexce
 
 f32 OffsetScale(const GiScene& scene) noexcept
 {
-    return std::isfinite(scene.rayOffsetScale) && scene.rayOffsetScale > 0.0f ? scene.rayOffsetScale
-                                                                              : 1.0f;
+    return math::IsFinite(scene.rayOffsetScale) && scene.rayOffsetScale > 0.0f
+               ? scene.rayOffsetScale
+               : 1.0f;
 }
 
 // Direct irradiance at a surface point from every analytic light, each tested
@@ -408,7 +409,7 @@ math::Vec3 TracePath(const GiScene& scene, const RayDesc& ray, const PathTraceSe
         current.direction = direction;
     }
 
-    if (settings.maxPathRadiance > 0.0f && std::isfinite(settings.maxPathRadiance))
+    if (settings.maxPathRadiance > 0.0f && math::IsFinite(settings.maxPathRadiance))
     {
         const f32 peak = MaxComponent(radiance);
         if (peak > settings.maxPathRadiance)
@@ -459,12 +460,12 @@ core::Status<core::Error> ValidateGiScene(const GiScene& scene) noexcept
     for (usize index = 0; index < scene.pointLights.Size(); ++index)
     {
         const GiPointLight& light = scene.pointLights[index];
-        if (!IsFinite(light.position) || !IsFinite(light.intensity) || !std::isfinite(light.range))
+        if (!IsFinite(light.position) || !IsFinite(light.intensity) || !math::IsFinite(light.range))
         {
             return StatusType::Err(ErrorCode::InvalidArgument, "GI point light is not finite");
         }
     }
-    if (!std::isfinite(scene.rayOffsetScale) || scene.rayOffsetScale < 0.0f ||
+    if (!math::IsFinite(scene.rayOffsetScale) || scene.rayOffsetScale < 0.0f ||
         !IsFinite(scene.skyRadiance))
     {
         return StatusType::Err(ErrorCode::InvalidArgument, "GI scene sky or offset is invalid");
@@ -535,7 +536,7 @@ math::Vec3 EstimateIrradiance(const GiScene& scene, const math::Vec3& position,
 math::Vec2 EncodeOctahedral(const math::Vec3& direction) noexcept
 {
     const f32 sum = std::fabs(direction.x) + std::fabs(direction.y) + std::fabs(direction.z);
-    if (!(sum > 0.0f) || !std::isfinite(sum))
+    if (!(sum > 0.0f) || !math::IsFinite(sum))
     {
         return math::Vec2{0.5f, 0.5f};
     }
@@ -895,8 +896,8 @@ core::Status<core::Error> BakeIrradianceVolume(const GiScene& scene, const Irrad
         return StatusType::Err(ErrorCode::InvalidArgument, "irradiance bake target is invalid");
     }
     if (desc.raysPerProbe < 16 || desc.raysPerProbe > 65536 || desc.path.maxBounces > 32 ||
-        !std::isfinite(desc.insideBackfaceThreshold) || desc.insideBackfaceThreshold < 0.0f ||
-        desc.insideBackfaceThreshold > 1.0f || !std::isfinite(desc.maxVisibilityDistance) ||
+        !math::IsFinite(desc.insideBackfaceThreshold) || desc.insideBackfaceThreshold < 0.0f ||
+        desc.insideBackfaceThreshold > 1.0f || !math::IsFinite(desc.maxVisibilityDistance) ||
         desc.maxVisibilityDistance < 0.0f)
     {
         return StatusType::Err(ErrorCode::InvalidArgument,
@@ -990,7 +991,7 @@ SampleIrradianceVolumeDetailed(const IrradianceVolume& volume, const math::Vec3&
     const math::Vec3 spacing = volume.ProbeSpacing();
     const f32 smallestSpacing = std::min(spacing.x, std::min(spacing.y, spacing.z));
     const math::Vec3 n = math::Normalize(normal);
-    const f32 bias = desc.normalBias > 0.0f && std::isfinite(desc.normalBias)
+    const f32 bias = desc.normalBias > 0.0f && math::IsFinite(desc.normalBias)
                          ? desc.normalBias
                          : 0.25f * smallestSpacing;
     const math::Vec3 point = position + n * bias;
@@ -1111,7 +1112,7 @@ math::Vec3 EvaluateIrradianceVolume(const IrradianceVolumeView& view, const math
                                     const math::Vec3& normal) noexcept
 {
     const f32 intensity =
-        std::isfinite(view.intensity) && view.intensity > 0.0f ? view.intensity : 0.0f;
+        math::IsFinite(view.intensity) && view.intensity > 0.0f ? view.intensity : 0.0f;
     if (view.volume == nullptr || !view.volume->IsValid())
     {
         return FiniteNonNegative(view.sampling.fallbackIrradiance) * intensity;

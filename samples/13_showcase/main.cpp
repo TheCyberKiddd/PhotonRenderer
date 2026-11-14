@@ -137,13 +137,12 @@ bool PushSmoothTriangle(DynamicArray<VertexInput>& mesh, const Vec3& a, const Ve
 bool PushQuad(DynamicArray<VertexInput>& mesh, const Vec3& a, const Vec3& b, const Vec3& c,
               const Vec3& d, const Vec3& normal, const Color& color)
 {
-    return PushTriangle(mesh, a, b, c, normal, color) &&
-           PushTriangle(mesh, a, c, d, normal, color);
+    return PushTriangle(mesh, a, b, c, normal, color) && PushTriangle(mesh, a, c, d, normal, color);
 }
 
 bool PushTexturedQuad(DynamicArray<VertexInput>& mesh, const Vec3& a, const Vec2& uvA,
-                      const Vec3& b, const Vec2& uvB, const Vec3& c, const Vec2& uvC,
-                      const Vec3& d, const Vec2& uvD, const Vec3& normal)
+                      const Vec3& b, const Vec2& uvB, const Vec3& c, const Vec2& uvC, const Vec3& d,
+                      const Vec2& uvD, const Vec3& normal)
 {
     const auto push = [&](const Vec3& position, const Vec2& uv)
     {
@@ -164,18 +163,16 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
     const Vec3 normals[6] = {Vec3{0.0f, 0.0f, 1.0f}, Vec3{0.0f, 0.0f, -1.0f},
                              Vec3{1.0f, 0.0f, 0.0f}, Vec3{-1.0f, 0.0f, 0.0f},
                              Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, -1.0f, 0.0f}};
-    const Vec3 tangents[6] = {Vec3{1.0f, 0.0f, 0.0f}, Vec3{-1.0f, 0.0f, 0.0f},
+    const Vec3 tangents[6] = {Vec3{1.0f, 0.0f, 0.0f},  Vec3{-1.0f, 0.0f, 0.0f},
                               Vec3{0.0f, 0.0f, -1.0f}, Vec3{0.0f, 0.0f, 1.0f},
-                              Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}};
-    const Vec3 bitangents[6] = {Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f},
-                                Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f},
+                              Vec3{1.0f, 0.0f, 0.0f},  Vec3{1.0f, 0.0f, 0.0f}};
+    const Vec3 bitangents[6] = {Vec3{0.0f, 1.0f, 0.0f},  Vec3{0.0f, 1.0f, 0.0f},
+                                Vec3{0.0f, 1.0f, 0.0f},  Vec3{0.0f, 1.0f, 0.0f},
                                 Vec3{0.0f, 0.0f, -1.0f}, Vec3{0.0f, 0.0f, 1.0f}};
     const f32 sine = std::sin(rotationY);
     const f32 cosine = std::cos(rotationY);
-    const auto rotate = [&](const Vec3& value)
-    {
-        return Vec3{cosine * value.x + sine * value.z, value.y,
-                    -sine * value.x + cosine * value.z};
+    const auto rotate = [&](const Vec3& value) {
+        return Vec3{cosine * value.x + sine * value.z, value.y, -sine * value.x + cosine * value.z};
     };
 
     for (usize face = 0; face < 6; ++face)
@@ -184,9 +181,9 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
         const f32 tangentExtent = face < 2 ? halfExtents.x : halfExtents.z;
         const f32 bitangentExtent = face < 4 ? halfExtents.y : halfExtents.z;
         const Vec3 faceCenter =
-            center + rotate(normals[face] * (face < 2 ? halfExtents.z
-                                                      : (face < 4 ? halfExtents.x
-                                                                  : halfExtents.y)));
+            center +
+            rotate(normals[face] *
+                   (face < 2 ? halfExtents.z : (face < 4 ? halfExtents.x : halfExtents.y)));
         const Vec3 right = rotate(tangents[face] * tangentExtent);
         const Vec3 up = rotate(bitangents[face] * bitangentExtent);
         if (!PushQuad(mesh, faceCenter - right - up, faceCenter + right - up,
@@ -201,8 +198,7 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
 bool AddSphere(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 radius, const Color& color,
                u32 segments = 48, u32 rings = 32)
 {
-    const auto normalAt = [](f32 theta, f32 phi)
-    {
+    const auto normalAt = [](f32 theta, f32 phi) {
         return Vec3{std::sin(theta) * std::cos(phi), std::cos(theta),
                     std::sin(theta) * std::sin(phi)};
     };
@@ -333,8 +329,8 @@ bool BuildProps(DynamicArray<VertexInput>& mesh)
                   Color{0.470f, 0.165f, 0.105f, 1.0f}, 0.21f) &&
            AddBox(mesh, Vec3{-2.55f, 0.30f, 3.35f}, Vec3{0.52f, 0.30f, 0.52f},
                   Color{0.155f, 0.330f, 0.215f, 1.0f}, 0.14f) &&
-           AddSphere(mesh, Vec3{3.05f, 0.44f, 2.55f}, 0.44f,
-                     Color{0.330f, 0.145f, 0.285f, 1.0f}, 32, 22) &&
+           AddSphere(mesh, Vec3{3.05f, 0.44f, 2.55f}, 0.44f, Color{0.330f, 0.145f, 0.285f, 1.0f},
+                     32, 22) &&
            AddBox(mesh, Vec3{-4.6f, 1.55f, -5.86f}, Vec3{0.95f, 1.15f, 0.07f},
                   Color{0.330f, 0.175f, 0.075f, 1.0f}) &&
            AddBox(mesh, Vec3{3.6f, 1.75f, -5.86f}, Vec3{0.78f, 0.98f, 0.07f},
@@ -417,15 +413,15 @@ void FillLighting(PbrLightingData& lighting, const SceneLighting& scene, const D
         ShaderDesc shader{};
         shader.pipeline.view = view;
         shader.pipeline.projection = projection;
-        shader.pipeline.viewport = Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()),
-                                            static_cast<f32>(color.Height())};
+        shader.pipeline.viewport =
+            Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()), static_cast<f32>(color.Height())};
         shader.pipeline.cullMode = CullMode::None;
         shader.pipeline.useJobs = true;
         shader.vertexShader = &SceneVertex;
         shader.pixelShader = &ScenePixel;
         shader.userData = &uniforms;
-        if (!DrawShadedTriangles(shader, Span<const VertexInput>{draw.mesh->Data(),
-                                                                 draw.mesh->Size()},
+        if (!DrawShadedTriangles(shader,
+                                 Span<const VertexInput>{draw.mesh->Data(), draw.mesh->Size()},
                                  color, depth, nullptr, allocator)
                  .IsOk())
         {
@@ -466,10 +462,10 @@ void FillLighting(PbrLightingData& lighting, const SceneLighting& scene, const D
         shader.vertexShader = &SceneVertex;
         shader.pixelShader = &NormalPixel;
         shader.userData = &uniforms;
-        if (!DrawShadedTriangles(shader,
-                                 Span<const VertexInput>{draws[index].mesh->Data(),
-                                                         draws[index].mesh->Size()},
-                                 normals, depth, nullptr, allocator)
+        if (!DrawShadedTriangles(
+                 shader,
+                 Span<const VertexInput>{draws[index].mesh->Data(), draws[index].mesh->Size()},
+                 normals, depth, nullptr, allocator)
                  .IsOk())
         {
             return false;
@@ -517,8 +513,8 @@ cyber::core::Status<cyber::core::Error> CaptureFace(const ReflectionProbeCapture
         ShaderDesc shader{};
         shader.pipeline.view = view.view;
         shader.pipeline.projection = view.projection;
-        shader.pipeline.viewport = Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()),
-                                            static_cast<f32>(color.Height())};
+        shader.pipeline.viewport =
+            Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()), static_cast<f32>(color.Height())};
         shader.pipeline.cullMode = CullMode::None;
         shader.pipeline.useJobs = true;
         shader.vertexShader = &SceneVertex;
@@ -529,9 +525,8 @@ cyber::core::Status<cyber::core::Error> CaptureFace(const ReflectionProbeCapture
                                  color, depth, nullptr, *context.allocator)
                  .IsOk())
         {
-            return cyber::core::Status<cyber::core::Error>::Err(
-                cyber::core::Error{cyber::core::ErrorCode::Internal,
-                                   "failed to render a reflection probe face"});
+            return cyber::core::Status<cyber::core::Error>::Err(cyber::core::Error{
+                cyber::core::ErrorCode::Internal, "failed to render a reflection probe face"});
         }
     }
     return cyber::core::Status<cyber::core::Error>::Ok();
@@ -639,16 +634,14 @@ int main(int argc, char** argv)
     // along the light's axes, so the half-extent is sized for that, not for
     // the handful of objects that actually cast.
     constexpr f32 kShadowExtent = 13.0f;
-    const Mat4 lightProjection = Mat4::OrthographicReverseZ(-kShadowExtent, kShadowExtent,
-                                                            -kShadowExtent, kShadowExtent, 0.1f,
-                                                            60.0f);
+    const Mat4 lightProjection = Mat4::OrthographicReverseZ(
+        -kShadowExtent, kShadowExtent, -kShadowExtent, kShadowExtent, 0.1f, 60.0f);
 
     // Only what stands in the room casts. The room itself is a closed box:
     // its ceiling would occlude the sun everywhere, and its flat floor and
     // walls only ever self-shadow into acne.
-    const DynamicArray<VertexInput>* casterMeshes[] = {&props,      &chrome,     &spheres[0],
-                                                       &spheres[1], &spheres[2], &spheres[3],
-                                                       &spheres[4]};
+    const DynamicArray<VertexInput>* casterMeshes[] = {
+        &props, &chrome, &spheres[0], &spheres[1], &spheres[2], &spheres[3], &spheres[4]};
     for (const DynamicArray<VertexInput>* mesh : casterMeshes)
     {
         for (usize index = 0; index < mesh->Size(); ++index)
@@ -699,8 +692,7 @@ int main(int argc, char** argv)
     sun.shadow.softFilter = true;
     sun.shadow.filterRadius = 8;
     sun.shadow.perspectiveProjection = false;
-    sun.shadow.worldUnitsPerTexel =
-        (2.0f * kShadowExtent) / static_cast<f32>(kShadowMapSize);
+    sun.shadow.worldUnitsPerTexel = (2.0f * kShadowExtent) / static_cast<f32>(kShadowMapSize);
     sun.shadow.sourceAngularRadiusRadians = 0.013f;
 
     // The three emissive fixtures, as actual light sources. The boxes above
@@ -1012,7 +1004,8 @@ int main(int argc, char** argv)
     std::printf("probe: 6 x %d cube, %d-sample specular prefilter, %d x %d BRDF table\n",
                 kProbeFaceSize, environmentDesc.specularSampleCount, environmentDesc.brdfLutSize,
                 environmentDesc.brdfLutSize);
-    std::printf("exposure: metered %.4f, %+.2f EV\n\n", static_cast<double>(timings.averageLuminance),
+    std::printf("exposure: metered %.4f, %+.2f EV\n\n",
+                static_cast<double>(timings.averageLuminance),
                 static_cast<double>(timings.exposureEv));
     std::printf("  %-20s %10s  %s\n", "post pass", "ms", "state");
     for (const PassTiming& timing : timings.passes)

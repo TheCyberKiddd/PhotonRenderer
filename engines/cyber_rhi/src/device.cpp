@@ -475,6 +475,85 @@ TextureInfo Device::TextureInfoOf(TextureHandle texture) const noexcept
     return m_interface->textureInfo(m_internal, texture);
 }
 
+Result<TileHeapHandle, Error> Device::CreateTileHeap(const TileHeapDesc& desc) noexcept
+{
+    if (!IsValid())
+    {
+        return Result<TileHeapHandle, Error>::Err(
+            Error{core::ErrorCode::InvalidArgument, "device is empty; no tile heap was created"});
+    }
+    if (m_interface->createTileHeap == nullptr)
+    {
+        return Result<TileHeapHandle, Error>::Err(
+            Error{core::ErrorCode::Unsupported, "backend has no reserved textures"});
+    }
+    TileHeapHandle heap;
+    const Status<Error> created = m_interface->createTileHeap(m_internal, desc, &heap);
+    if (!created)
+    {
+        return Result<TileHeapHandle, Error>::Err(created.Error());
+    }
+    if (!heap.IsValid())
+    {
+        return Result<TileHeapHandle, Error>::Err(
+            Error{core::ErrorCode::Internal, "backend returned an invalid tile heap handle"});
+    }
+    return Result<TileHeapHandle, Error>::Ok(heap);
+}
+
+Status<Error> Device::DestroyTileHeap(TileHeapHandle heap) noexcept
+{
+    if (!IsValid())
+    {
+        return StatusError(core::ErrorCode::InvalidArgument, "device is empty");
+    }
+    if (m_interface->destroyTileHeap == nullptr)
+    {
+        return StatusError(core::ErrorCode::Unsupported, "backend has no reserved textures");
+    }
+    return m_interface->destroyTileHeap(m_internal, heap);
+}
+
+TextureTiling Device::TextureTilingOf(TextureHandle texture) const noexcept
+{
+    if (!IsValid() || m_interface->textureTiling == nullptr)
+    {
+        return TextureTiling{};
+    }
+    return m_interface->textureTiling(m_internal, texture);
+}
+
+Status<Error> Device::UpdateTileMappings(QueueKind queue,
+                                         memory::Span<const TileMapping> mappings) noexcept
+{
+    if (!IsValid())
+    {
+        return StatusError(core::ErrorCode::InvalidArgument, "device is empty");
+    }
+    if (m_interface->updateTileMappings == nullptr)
+    {
+        return StatusError(core::ErrorCode::Unsupported, "backend has no reserved textures");
+    }
+    if (mappings.Data() == nullptr && mappings.Size() != 0)
+    {
+        return StatusError(core::ErrorCode::InvalidArgument, "tile mapping span is null");
+    }
+    if (mappings.Empty())
+    {
+        return Status<Error>::Ok();
+    }
+    return m_interface->updateTileMappings(m_internal, queue, mappings);
+}
+
+TileMappingInfo Device::TileMappingOf(const TileMapping& tile) const noexcept
+{
+    if (!IsValid() || m_interface->tileMapping == nullptr)
+    {
+        return TileMappingInfo{};
+    }
+    return m_interface->tileMapping(m_internal, tile);
+}
+
 Result<TextureViewHandle, Error> Device::CreateTextureView(const TextureViewDesc& desc) noexcept
 {
     if (!IsValid() || m_interface->createTextureView == nullptr)

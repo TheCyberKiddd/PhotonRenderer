@@ -128,4 +128,22 @@ u64 Thread::CurrentThreadId() noexcept
     return static_cast<u64>(GetCurrentThreadId());
 }
 
+bool Thread::SetCurrentThreadPriority(ThreadPriority priority) noexcept
+{
+    int value = THREAD_PRIORITY_NORMAL;
+    switch (priority)
+    {
+    case ThreadPriority::Low:
+        value = THREAD_PRIORITY_BELOW_NORMAL;
+        break;
+    case ThreadPriority::Normal:
+        value = THREAD_PRIORITY_NORMAL;
+        break;
+    case ThreadPriority::High:
+        value = THREAD_PRIORITY_ABOVE_NORMAL;
+        break;
+    }
+    return SetThreadPriority(GetCurrentThread(), value) != 0;
+}
+
 }  // namespace cyber::platform

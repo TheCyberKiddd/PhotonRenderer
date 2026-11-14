@@ -1472,6 +1472,15 @@ namespace
     return count % 2 == 1 ? values[count / 2] : 0.5 * (values[count / 2 - 1] + values[count / 2]);
 }
 
+// The fastest of several frames. Preemption and other processes only ever add
+// time to a frame, so under load (ctest -j, a busy desktop) the median of a
+// short measurement drifts up while the minimum stays at the intrinsic cost.
+// Ratios between sizes are taken between minima for that reason.
+[[nodiscard]] double Fastest(const double* values, u32 count) noexcept
+{
+    return *std::min_element(values, values + count);
+}
+
 }  // namespace
 
 // Culling on the compute queue, drawing on the graphics queue, ordered by a
@@ -1644,13 +1653,13 @@ CG_TEST(gpu_driven_d3d12_cpu_time_stays_flat_as_objects_grow)
                     .count();
             CG_REQUIRE(harness.device.WaitFence(harness.fence, value).IsOk());
         }
-        gpuDriven[sizeIndex] = Median(times, kFrames);
+        gpuDriven[sizeIndex] = Fastest(times, kFrames);
 
         // The control stops at 100,000 instances: a million CPU-recorded draws
         // a frame says nothing the trend does not.
         if (kSizes[sizeIndex] <= 100000)
         {
-            constexpr u32 kControlFrames = 5;
+            constexpr u32 kControlFrames = 9;
             double control[kControlFrames]{};
             GpuCullOutput culled(heap);
             for (u32 frame = 0; frame < kControlFrames; ++frame)
@@ -1685,11 +1694,11 @@ CG_TEST(gpu_driven_d3d12_cpu_time_stays_flat_as_objects_grow)
                 // and its draws read an instance stream nothing has bound.
                 list = CommandList{};
             }
-            cpuDriven[sizeIndex] = Median(control, kControlFrames);
+            cpuDriven[sizeIndex] = Fastest(control, kControlFrames);
         }
         CG_REQUIRE(harness.device.WaitIdle().IsOk());
     }
-    std::printf("adapter \"%s\": CPU ms per frame (median of %u)\n", adapter.name, kFrames);
+    std::printf("adapter \"%s\": CPU ms per frame (fastest of %u)\n", adapter.name, kFrames);
     for (u32 sizeIndex = 0; sizeIndex < kSizeCount; ++sizeIndex)
     {
         if (kSizes[sizeIndex] <= 100000)

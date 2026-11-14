@@ -434,8 +434,8 @@ CG_TEST(software_pipeline_ground_plane_under_the_camera_is_whole)
     CG_REQUIRE(CreateTargets(heap, kWidth, kHeight, color, depth));
 
     PipelineDesc desc = MakeDesc(kWidth, kHeight);
-    desc.view = Mat4::LookAt(Vec3{0.0f, 3.0f, 6.0f}, Vec3{0.0f, 0.0f, 0.0f},
-                             Vec3{0.0f, 1.0f, 0.0f});
+    desc.view =
+        Mat4::LookAt(Vec3{0.0f, 3.0f, 6.0f}, Vec3{0.0f, 0.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f});
     desc.projection = Mat4::PerspectiveReverseZ(
         60.0f * cyber::math::kDegreesToRadians,
         static_cast<f32>(kWidth) / static_cast<f32>(kHeight), 0.1f, 100.0f);

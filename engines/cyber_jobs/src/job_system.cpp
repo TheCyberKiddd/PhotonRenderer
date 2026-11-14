@@ -664,8 +664,15 @@ void ParallelBatch(void* userData) noexcept
         }
     }
 
-    state->remaining.fetch_sub(1, std::memory_order_acq_rel);
-    state->system->NotifyWaiters();
+    // `state` lives on the stack of the ParallelFor caller, which may observe
+    // `remaining == 0` and return the moment the decrement lands. Read
+    // everything needed afterwards first; touching `state` after the decrement
+    // is a use-after-return.
+    auto* system = state->system;
+    if (state->remaining.fetch_sub(1, std::memory_order_acq_rel) == 1)
+    {
+        system->NotifyWaiters();
+    }
 }
 
 }  // namespace
@@ -901,7 +908,10 @@ void JobSystem::ParallelFor(u32 count, u32 batchSize, ParallelFunction function,
     desc.function = &ParallelBatch;
     desc.userData = &state;
 
-    for (u32 index = 0; index < jobCount; ++index)
+    // The caller takes one share of the batches itself instead of blocking
+    // while the workers wake: a short loop finishes on the calling thread
+    // without paying a wake-up, and a long one gains a thread.
+    for (u32 index = 1; index < jobCount; ++index)
     {
         if (!SubmitDetached(desc))
         {
@@ -911,6 +921,7 @@ void JobSystem::ParallelFor(u32 count, u32 batchSize, ParallelFunction function,
             }
         }
     }
+    ParallelBatch(&state);
 
     m_impl->waiters.fetch_add(1, std::memory_order_acq_rel);
     std::unique_lock<std::mutex> lock(m_impl->waitMutex);

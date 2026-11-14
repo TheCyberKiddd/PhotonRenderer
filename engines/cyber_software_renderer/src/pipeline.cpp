@@ -1,10 +1,11 @@
+#include "guard_band.h"
+#include "scratch_allocator.h"
+
 #include <cyber/memory/dynamic_array.h>
 #include <cyber/software/depth_buffer.h>
 #include <cyber/software/framebuffer.h>
 #include <cyber/software/pipeline.h>
 #include <cyber/software/raster.h>
-
-#include "guard_band.h"
 
 #include <cmath>
 
@@ -28,7 +29,6 @@ namespace
 // counted once, here, instead of disappearing inside it.
 constexpr f32 kMaxScreenCoordinate = guard::kMaxScreenCoordinate;
 
-
 // Near plane in homogeneous clip space: inside when `z <= w`.
 f32 NearPlaneDistance(const ClipVertex& vertex) noexcept
 {
@@ -51,14 +51,14 @@ ClipVertex LerpClipVertex(const ClipVertex& from, const ClipVertex& to, f32 fact
 
 bool IsFinite(const Vec4& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) &&
-           std::isfinite(value.w);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z) &&
+           math::IsFinite(value.w);
 }
 
 bool IsValidViewport(const Viewport& viewport) noexcept
 {
-    return std::isfinite(viewport.x) && std::isfinite(viewport.y) &&
-           std::isfinite(viewport.width) && std::isfinite(viewport.height) &&
+    return math::IsFinite(viewport.x) && math::IsFinite(viewport.y) &&
+           math::IsFinite(viewport.width) && math::IsFinite(viewport.height) &&
            viewport.width > 0.0f && viewport.height > 0.0f;
 }
 
@@ -94,7 +94,7 @@ ClipPolygon ClipTriangleNearPlane(const ClipVertex& v0, const ClipVertex& v1,
         }
 
         const f32 denominator = currentDistance - nextDistance;
-        if (denominator == 0.0f || !std::isfinite(denominator))
+        if (denominator == 0.0f || !math::IsFinite(denominator))
         {
             continue;
         }
@@ -177,7 +177,8 @@ core::Status<core::Error> DrawTriangles(const PipelineDesc& desc,
     }
 
     // One input triangle becomes at most two after the near-plane clip.
-    memory::DynamicArray<DepthRasterTriangle> triangles(allocator);
+    detail::ScratchScope scratch;
+    memory::DynamicArray<DepthRasterTriangle> triangles(scratch.Allocator());
     if (!triangles.TryReserve(inputTriangles * 2))
     {
         return core::Status<core::Error>::Err(
@@ -191,6 +192,11 @@ core::Status<core::Error> DrawTriangles(const PipelineDesc& desc,
     u64 invalid = 0;
     u64 submitted = 0;
     const guard::Band band = guard::MakeBand(desc.viewport);
+    // Guard-band clip buffers, hoisted out of the triangle loop: the vertex
+    // type carries default member initializers, so declaring the arrays per
+    // triangle constructed both on every triangle, clipped or not.
+    ClipVertex guardPolygon[guard::kMaxGuardPolygonVertices];
+    ClipVertex guardScratch[guard::kMaxGuardPolygonVertices];
 
     for (usize index = 0; index < inputTriangles; ++index)
     {
@@ -231,8 +237,6 @@ core::Status<core::Error> DrawTriangles(const PipelineDesc& desc,
             ++clipped;
         }
 
-        ClipVertex guardPolygon[guard::kMaxGuardPolygonVertices];
-        ClipVertex guardScratch[guard::kMaxGuardPolygonVertices];
         u32 guardCount = nearClipped.count;
         for (u32 corner = 0; corner < guardCount; ++corner)
         {
@@ -241,8 +245,7 @@ core::Status<core::Error> DrawTriangles(const PipelineDesc& desc,
         if (guard::HasPositiveW(guardPolygon, guardCount) &&
             !guard::IsInside(guardPolygon, guardCount, band))
         {
-            guardCount = guard::Clip(guardPolygon, guardCount, band, guardScratch,
-                                     LerpClipVertex);
+            guardCount = guard::Clip(guardPolygon, guardCount, band, guardScratch, LerpClipVertex);
             if (guardCount == 0)
             {
                 ++offscreen;
@@ -265,7 +268,7 @@ core::Status<core::Error> DrawTriangles(const PipelineDesc& desc,
             for (u32 corner = 0; corner < 3; ++corner)
             {
                 clipW[corner] = corners[corner]->position.w;
-                if (!(clipW[corner] > 0.0f) || !std::isfinite(clipW[corner]))
+                if (!(clipW[corner] > 0.0f) || !math::IsFinite(clipW[corner]))
                 {
                     usable = false;
                     break;
@@ -277,7 +280,7 @@ core::Status<core::Error> DrawTriangles(const PipelineDesc& desc,
                 const f32 ndcZ = corners[corner]->position.z * reciprocal;
                 const f32 screenX = desc.viewport.x + (0.5f * ndcX + 0.5f) * desc.viewport.width;
                 const f32 screenY = desc.viewport.y + (0.5f - 0.5f * ndcY) * desc.viewport.height;
-                if (!std::isfinite(screenX) || !std::isfinite(screenY) || !std::isfinite(ndcZ))
+                if (!math::IsFinite(screenX) || !math::IsFinite(screenY) || !math::IsFinite(ndcZ))
                 {
                     usable = false;
                     break;

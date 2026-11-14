@@ -166,6 +166,10 @@ enum class Feature : u32
     // CPU maximum (Phase 32). Always reported together with IndirectDraw and
     // MultiDrawIndirect, never without them.
     IndirectDrawCount,
+    // Reserved (tiled) textures: a texture created without memory whose 64 KiB
+    // tiles are mapped onto tile heaps at runtime, with defined zero reads from
+    // unmapped tiles: D3D12_TILED_RESOURCES_TIER_2 or above (Phase 33).
+    ReservedTextures,
     // Count of enumerators, for table tests. Not a feature.
     Count
 };
@@ -209,6 +213,8 @@ static_assert(kFeatureCount <= 32, "Features bitset holds 32 flags");
         return "ray_query";
     case Feature::IndirectDrawCount:
         return "indirect_draw_count";
+    case Feature::ReservedTextures:
+        return "reserved_textures";
     case Feature::Count:
         break;
     }

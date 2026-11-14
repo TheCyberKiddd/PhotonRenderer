@@ -15,7 +15,7 @@ using cyber::core::usize;
 
 f32 Saturate(f32 value) noexcept
 {
-    if (!std::isfinite(value))
+    if (!math::IsFinite(value))
     {
         return 0.0f;
     }
@@ -24,7 +24,7 @@ f32 Saturate(f32 value) noexcept
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 f32 SmoothStep(f32 value) noexcept
@@ -48,8 +48,7 @@ f32 LinearViewDistance(const ScreenSpaceReflectionDesc& desc, f32 reverseZDepth)
 {
     if (desc.perspectiveProjection)
     {
-        const f32 denominator =
-            desc.nearPlane + reverseZDepth * (desc.farPlane - desc.nearPlane);
+        const f32 denominator = desc.nearPlane + reverseZDepth * (desc.farPlane - desc.nearPlane);
         if (denominator <= 0.0f)
         {
             return desc.farPlane;
@@ -78,9 +77,9 @@ f32 EvaluateReflectionProbeWeight(const ReflectionProbe& probe,
     {
         return 0.0f;
     }
-    const f32 blendDistance =
-        std::isfinite(probe.blendDistance) && probe.blendDistance > 0.0f ? probe.blendDistance
-                                                                         : 0.0f;
+    const f32 blendDistance = math::IsFinite(probe.blendDistance) && probe.blendDistance > 0.0f
+                                  ? probe.blendDistance
+                                  : 0.0f;
     if (blendDistance <= 0.0f)
     {
         return 1.0f;
@@ -88,8 +87,8 @@ f32 EvaluateReflectionProbeWeight(const ReflectionProbe& probe,
 
     // Distance to the nearest influence face, so the ramp is continuous across
     // an edge and a corner rather than per-axis.
-    f32 distance = std::min(worldPosition.x - probe.influenceMin.x,
-                            probe.influenceMax.x - worldPosition.x);
+    f32 distance =
+        std::min(worldPosition.x - probe.influenceMin.x, probe.influenceMax.x - worldPosition.x);
     distance = std::min(distance, std::min(worldPosition.y - probe.influenceMin.y,
                                            probe.influenceMax.y - worldPosition.y));
     distance = std::min(distance, std::min(worldPosition.z - probe.influenceMin.z,
@@ -97,8 +96,7 @@ f32 EvaluateReflectionProbeWeight(const ReflectionProbe& probe,
     return SmoothStep(distance / blendDistance);
 }
 
-math::Vec3 ApplyBoxParallaxCorrection(const ReflectionProbe& probe,
-                                      const math::Vec3& worldPosition,
+math::Vec3 ApplyBoxParallaxCorrection(const ReflectionProbe& probe, const math::Vec3& worldPosition,
                                       const math::Vec3& reflectDirection) noexcept
 {
     if (!IsValidBox(probe.proxyMin, probe.proxyMax) || !IsFinite(worldPosition) ||
@@ -130,7 +128,7 @@ math::Vec3 ApplyBoxParallaxCorrection(const ReflectionProbe& probe,
             exitDistance = std::min(exitDistance, distance);
         }
     }
-    if (!std::isfinite(exitDistance) || exitDistance <= 0.0f)
+    if (!math::IsFinite(exitDistance) || exitDistance <= 0.0f)
     {
         return reflectDirection;
     }
@@ -191,8 +189,7 @@ math::Vec3 EvaluateReflectionProbes(const ReflectionProbeSet& probes,
             continue;
         }
         const ReflectionProbe& probe = probes.probes[index];
-        const math::Vec3 direction =
-            ApplyBoxParallaxCorrection(probe, worldPosition, mirror);
+        const math::Vec3 direction = ApplyBoxParallaxCorrection(probe, worldPosition, mirror);
         const math::Vec3 radiance =
             EvaluateIblDiffuse(probe.environment, surface) +
             EvaluateIblSpecularDirection(probe.environment, surface, direction);
@@ -281,9 +278,8 @@ core::Result<HiZPyramid, core::Error> HiZPyramid::Build(const DepthBuffer& depth
     pyramid.m_height = depth.Height();
 
     u32 levels = 1;
-    while (levels < kMaxHiZLevels &&
-           (std::max(1, pyramid.m_width >> (levels - 1)) > 1 ||
-            std::max(1, pyramid.m_height >> (levels - 1)) > 1))
+    while (levels < kMaxHiZLevels && (std::max(1, pyramid.m_width >> (levels - 1)) > 1 ||
+                                      std::max(1, pyramid.m_height >> (levels - 1)) > 1))
     {
         ++levels;
     }
@@ -430,7 +426,7 @@ ScreenRay ProjectRay(const ScreenSpaceReflectionDesc& desc, const math::Vec3& or
     ScreenRay ray{};
     const math::Vec4 startClip =
         desc.clipFromWorld * math::Vec4{origin.x, origin.y, origin.z, 1.0f};
-    if (!std::isfinite(startClip.w) || startClip.w <= 1.0e-6f)
+    if (!math::IsFinite(startClip.w) || startClip.w <= 1.0e-6f)
     {
         return ray;
     }
@@ -442,7 +438,7 @@ ScreenRay ProjectRay(const ScreenSpaceReflectionDesc& desc, const math::Vec3& or
     {
         const math::Vec3 end = origin + direction * distance;
         endClip = desc.clipFromWorld * math::Vec4{end.x, end.y, end.z, 1.0f};
-        if (std::isfinite(endClip.w) && endClip.w > 1.0e-6f)
+        if (math::IsFinite(endClip.w) && endClip.w > 1.0e-6f)
         {
             found = true;
             break;
@@ -462,9 +458,9 @@ ScreenRay ProjectRay(const ScreenSpaceReflectionDesc& desc, const math::Vec3& or
                          (0.5f - 0.5f * endClip.y * endReciprocal) * height};
     ray.startDepth = startClip.z * startReciprocal;
     ray.endDepth = endClip.z * endReciprocal;
-    ray.valid = std::isfinite(ray.start.x) && std::isfinite(ray.start.y) &&
-                std::isfinite(ray.end.x) && std::isfinite(ray.end.y) &&
-                std::isfinite(ray.startDepth) && std::isfinite(ray.endDepth);
+    ray.valid = math::IsFinite(ray.start.x) && math::IsFinite(ray.start.y) &&
+                math::IsFinite(ray.end.x) && math::IsFinite(ray.end.y) &&
+                math::IsFinite(ray.startDepth) && math::IsFinite(ray.endDepth);
     return ray;
 }
 
@@ -477,20 +473,16 @@ f32 EdgeFade(const ScreenSpaceReflectionDesc& desc, f32 x, f32 y, f32 width, f32
     }
     const f32 marginX = fraction * width;
     const f32 marginY = fraction * height;
-    const f32 fadeX = marginX > 0.0f
-                          ? Saturate(std::min(x, width - x) / marginX)
-                          : 1.0f;
-    const f32 fadeY = marginY > 0.0f
-                          ? Saturate(std::min(y, height - y) / marginY)
-                          : 1.0f;
+    const f32 fadeX = marginX > 0.0f ? Saturate(std::min(x, width - x) / marginX) : 1.0f;
+    const f32 fadeY = marginY > 0.0f ? Saturate(std::min(y, height - y) / marginY) : 1.0f;
     return SmoothStep(std::min(fadeX, fadeY));
 }
 
 }  // namespace
 
-ScreenSpaceReflectionSample
-TraceScreenSpaceReflection(const ScreenSpaceReflectionDesc& desc, const math::Vec3& worldPosition,
-                           const math::Vec3& reflectDirection) noexcept
+ScreenSpaceReflectionSample TraceScreenSpaceReflection(const ScreenSpaceReflectionDesc& desc,
+                                                       const math::Vec3& worldPosition,
+                                                       const math::Vec3& reflectDirection) noexcept
 {
     ScreenSpaceReflectionSample sample{};
     if (desc.color == nullptr || !desc.color->IsValid() || desc.depth == nullptr ||
@@ -498,8 +490,7 @@ TraceScreenSpaceReflection(const ScreenSpaceReflectionDesc& desc, const math::Ve
     {
         return sample;
     }
-    if (desc.color->Width() != desc.depth->Width() ||
-        desc.color->Height() != desc.depth->Height())
+    if (desc.color->Width() != desc.depth->Width() || desc.color->Height() != desc.depth->Height())
     {
         return sample;
     }
@@ -507,12 +498,12 @@ TraceScreenSpaceReflection(const ScreenSpaceReflectionDesc& desc, const math::Ve
     {
         return sample;
     }
-    if (!std::isfinite(desc.nearPlane) || !std::isfinite(desc.farPlane) ||
+    if (!math::IsFinite(desc.nearPlane) || !math::IsFinite(desc.farPlane) ||
         desc.nearPlane <= 0.0f || desc.farPlane <= desc.nearPlane)
     {
         return sample;
     }
-    if (!std::isfinite(desc.maxWorldDistance) || desc.maxWorldDistance <= 0.0f)
+    if (!math::IsFinite(desc.maxWorldDistance) || desc.maxWorldDistance <= 0.0f)
     {
         return sample;
     }
@@ -543,7 +534,7 @@ TraceScreenSpaceReflection(const ScreenSpaceReflectionDesc& desc, const math::Ve
 
     const u32 maximumSteps = std::clamp(desc.maxSteps, 1u, 1024u);
     const f32 thickness =
-        std::isfinite(desc.thickness) && desc.thickness > 0.0f ? desc.thickness : 0.0f;
+        math::IsFinite(desc.thickness) && desc.thickness > 0.0f ? desc.thickness : 0.0f;
 
     // Hi-Z traversal when a pyramid is supplied, a fixed-step walk otherwise.
     // Both accept the same hits; the pyramid only skips tiles whose closest
@@ -585,19 +576,17 @@ TraceScreenSpaceReflection(const ScreenSpaceReflectionDesc& desc, const math::Ve
             f32 advance = std::numeric_limits<f32>::infinity();
             if (std::abs(delta.x) > 1.0e-6f)
             {
-                const f32 boundary = delta.x > 0.0f
-                                         ? static_cast<f32>((tileX + 1) * tileSize)
-                                         : static_cast<f32>(tileX * tileSize) - 1.0e-3f;
+                const f32 boundary = delta.x > 0.0f ? static_cast<f32>((tileX + 1) * tileSize)
+                                                    : static_cast<f32>(tileX * tileSize) - 1.0e-3f;
                 advance = std::min(advance, (boundary - ray.start.x) / delta.x - t);
             }
             if (std::abs(delta.y) > 1.0e-6f)
             {
-                const f32 boundary = delta.y > 0.0f
-                                         ? static_cast<f32>((tileY + 1) * tileSize)
-                                         : static_cast<f32>(tileY * tileSize) - 1.0e-3f;
+                const f32 boundary = delta.y > 0.0f ? static_cast<f32>((tileY + 1) * tileSize)
+                                                    : static_cast<f32>(tileY * tileSize) - 1.0e-3f;
                 advance = std::min(advance, (boundary - ray.start.y) / delta.y - t);
             }
-            if (!std::isfinite(advance) || advance <= 0.0f)
+            if (!math::IsFinite(advance) || advance <= 0.0f)
             {
                 advance = stepLength;
             }

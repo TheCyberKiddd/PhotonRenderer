@@ -263,7 +263,92 @@ bool ValidateTextureDesc(const Capabilities& capabilities, const TextureDesc& de
                         "a storage texture has exactly one mip level");
         }
     }
+    if (desc.reserved)
+    {
+        if (!capabilities.features.Has(Feature::ReservedTextures))
+        {
+            return Fail(out, ErrorCode::Unsupported,
+                        "reserved textures are not supported by this device");
+        }
+        if (desc.dimension != TextureDimension::Dim2D || desc.arrayLayers != 1 ||
+            desc.sampleCount != 1)
+        {
+            return Fail(out, ErrorCode::InvalidArgument,
+                        "a reserved texture is 2d, single-layer, and single-sample");
+        }
+        if (renderTarget || depthStencil)
+        {
+            return Fail(out, ErrorCode::InvalidArgument,
+                        "a reserved texture cannot be an attachment");
+        }
+        if (desc.lifetime != MemoryLifetime::Retained)
+        {
+            return Fail(out, ErrorCode::InvalidArgument,
+                        "a reserved texture's memory lives in tile heaps, not a transient pool");
+        }
+        if (!ComputeStandardTiling(desc).valid)
+        {
+            return Fail(out, ErrorCode::InvalidArgument,
+                        "the texture format has no standard tile shape");
+        }
+    }
     return true;
+}
+
+bool ValidateTileMapping(const TextureTiling& tiling, const TileMapping& mapping, u32 heapTiles,
+                         bool heapValid, Error* out) noexcept
+{
+    if (!tiling.valid)
+    {
+        return Fail(out, ErrorCode::InvalidArgument,
+                    "tile mapping names a stale texture or one that is not reserved");
+    }
+    if (mapping.packed)
+    {
+        if (tiling.packedMipCount == 0 || mapping.tileX >= tiling.packedTileCount ||
+            mapping.tileY != 0)
+        {
+            return Fail(out, ErrorCode::InvalidArgument,
+                        "packed tile index is outside the texture's packed mips");
+        }
+    }
+    else if (mapping.mipLevel >= tiling.standardMipCount ||
+             mapping.tileX >= tiling.mipTilesX[mapping.mipLevel] ||
+             mapping.tileY >= tiling.mipTilesY[mapping.mipLevel])
+    {
+        return Fail(out, ErrorCode::InvalidArgument,
+                    "tile coordinate is outside the texture's standard mips");
+    }
+    if (mapping.heap.IsValid())
+    {
+        if (!heapValid)
+        {
+            return Fail(out, ErrorCode::InvalidArgument, "tile mapping names a stale tile heap");
+        }
+        if (mapping.heapTile >= heapTiles)
+        {
+            return Fail(out, ErrorCode::InvalidArgument, "heap tile is outside the tile heap");
+        }
+    }
+    return true;
+}
+
+u32 TileLinearIndex(const TextureTiling& tiling, const TileMapping& mapping) noexcept
+{
+    u32 index = 0;
+    if (mapping.packed)
+    {
+        for (u32 mip = 0; mip < tiling.standardMipCount; ++mip)
+        {
+            index += tiling.MipTileCount(mip);
+        }
+        return index + mapping.tileX;
+    }
+    for (u32 mip = 0; mip < mapping.mipLevel; ++mip)
+    {
+        index += tiling.MipTileCount(mip);
+    }
+    return index + mapping.tileY * tiling.mipTilesX[mapping.mipLevel] + mapping.tileX;
 }
 
 // Usages that require a matching aspect. A color view of a depth format is
@@ -307,8 +392,7 @@ bool ValidateTextureView(const TextureInfo& info, const TextureViewDesc& desc,
         return Fail(out, ErrorCode::InvalidArgument,
                     "view format is not compatible with the texture format");
     }
-    if ((desc.usage == TextureViewUsage::Sampled &&
-         !HasUsage(info.usage, TextureUsage::Sampled)) ||
+    if ((desc.usage == TextureViewUsage::Sampled && !HasUsage(info.usage, TextureUsage::Sampled)) ||
         (desc.usage == TextureViewUsage::RenderTarget &&
          !HasUsage(info.usage, TextureUsage::RenderTarget)) ||
         (desc.usage == TextureViewUsage::DepthStencil &&

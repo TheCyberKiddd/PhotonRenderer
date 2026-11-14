@@ -50,9 +50,9 @@ using namespace cyber::software;
 
 constexpr u32 kWarmupFrames = 8;
 constexpr u32 kMeasuredFrames = 40;
-constexpr u32 kGridSide = 6;           // 36 spheres
-constexpr u32 kSphereSegments = 24;    // longitude
-constexpr u32 kSphereRings = 12;       // latitude
+constexpr u32 kGridSide = 6;         // 36 spheres
+constexpr u32 kSphereSegments = 24;  // longitude
+constexpr u32 kSphereRings = 12;     // latitude
 constexpr i32 kTextureSize = 256;
 
 struct Resolution
@@ -63,13 +63,14 @@ struct Resolution
 };
 
 constexpr Resolution kResolutions[] = {
-    {"320x180", 320, 180},     {"640x360", 640, 360},   {"1280x720", 1280, 720},
-    {"1600x900", 1600, 900},   {"1920x1080", 1920, 1080},
+    {"320x180", 320, 180},   {"640x360", 640, 360},     {"1280x720", 1280, 720},
+    {"1600x900", 1600, 900}, {"1920x1080", 1920, 1080},
 };
 
 void AppendSphere(std::vector<VertexInput>& out, u32 segments, u32 rings)
 {
-    const auto position = [&](u32 ring, u32 segment) {
+    const auto position = [&](u32 ring, u32 segment)
+    {
         const f32 v = static_cast<f32>(ring) / static_cast<f32>(rings);
         const f32 u = static_cast<f32>(segment) / static_cast<f32>(segments);
         const f32 phi = v * cyber::math::kPi;
@@ -106,7 +107,8 @@ void AppendSphere(std::vector<VertexInput>& out, u32 segments, u32 rings)
 
 void AppendGround(std::vector<VertexInput>& out, f32 extent)
 {
-    const auto corner = [&](f32 x, f32 z, f32 u, f32 v) {
+    const auto corner = [&](f32 x, f32 z, f32 u, f32 v)
+    {
         VertexInput vertex{};
         vertex.position = Vec3{x * extent, 0.0f, z * extent};
         vertex.normal = Vec3{0.0f, 1.0f, 0.0f};
@@ -173,8 +175,7 @@ struct Timing
     }
     timing.meanMs = total / static_cast<double>(samples.size());
     timing.minMs = samples.front();
-    const auto index =
-        static_cast<std::size_t>(static_cast<double>(samples.size() - 1U) * 0.95);
+    const auto index = static_cast<std::size_t>(static_cast<double>(samples.size() - 1U) * 0.95);
     timing.p95Ms = samples[index];
     return timing;
 }
@@ -248,8 +249,8 @@ int main()
         {
             const bool checker = (((x >> 4) + (y >> 4)) & 1) != 0;
             const f32 noise = static_cast<f32>((x * 1664525 + y * 1013904223) & 0xFF) / 255.0f;
-            const Color color = checker ? Color{0.78f, 0.72f, 0.60f, 1.0f}
-                                        : Color{0.22f, 0.28f, 0.36f, 1.0f};
+            const Color color =
+                checker ? Color{0.78f, 0.72f, 0.60f, 1.0f} : Color{0.22f, 0.28f, 0.36f, 1.0f};
             texture.SetTexel(0, x, y,
                              Color{color.r * (0.85f + 0.15f * noise),
                                    color.g * (0.85f + 0.15f * noise),
@@ -330,8 +331,7 @@ int main()
             {
                 for (u32 light = 0; light < 4U; ++light)
                 {
-                    const f32 angle =
-                        static_cast<f32>(light) * 0.5f * cyber::math::kPi;
+                    const f32 angle = static_cast<f32>(light) * 0.5f * cyber::math::kPi;
                     lighting.points[light].position =
                         Vec3{std::cos(angle) * 9.0f, 3.0f, std::sin(angle) * 9.0f};
                     lighting.points[light].intensity = Vec3{18.0f, 14.0f, 10.0f};
@@ -367,7 +367,8 @@ int main()
                 u64 framePixels = 0;
                 u64 frameTriangles = 0;
 
-                const auto draw = [&](const std::vector<VertexInput>& mesh, const Mat4& model) {
+                const auto draw = [&](const std::vector<VertexInput>& mesh, const Mat4& model)
+                {
                     SceneUniforms uniforms{};
                     uniforms.lighting = lighting;
                     uniforms.transform.modelViewProjection = projection * view * model;
@@ -387,10 +388,9 @@ int main()
                         workload == Workload::Flat ? &FlatPixelShader : &ScenePbrPixelShader;
                     shaderDesc.userData = &uniforms;
                     PipelineStats stats{};
-                    const auto status =
-                        DrawShadedTriangles(shaderDesc,
-                                            Span<const VertexInput>(mesh.data(), mesh.size()),
-                                            color, depth, &jobSystem, allocator, &stats);
+                    const auto status = DrawShadedTriangles(
+                        shaderDesc, Span<const VertexInput>(mesh.data(), mesh.size()), color, depth,
+                        &jobSystem, allocator, &stats);
                     if (!status)
                     {
                         std::fprintf(stderr, "frame bench: draw failed: %s\n",
@@ -439,9 +439,8 @@ int main()
 
             const Timing frameTiming = Summarize(frameSamples);
             const Timing presentTiming = Summarize(presentSamples);
-            std::printf("%-22s %-10s %10.2f %10.2f %10.2f %10.1f %12.2f\n",
-                        WorkloadName(workload), resolution.name, frameTiming.meanMs,
-                        frameTiming.minMs, frameTiming.p95Ms,
+            std::printf("%-22s %-10s %10.2f %10.2f %10.2f %10.1f %12.2f\n", WorkloadName(workload),
+                        resolution.name, frameTiming.meanMs, frameTiming.minMs, frameTiming.p95Ms,
                         frameTiming.meanMs > 0.0 ? 1000.0 / frameTiming.meanMs : 0.0,
                         presentTiming.meanMs);
             std::fflush(stdout);
@@ -483,7 +482,8 @@ int main()
         const Mat4 view = CameraView(camera);
         const Mat4 projection = CameraProjection(camera, 320.0f / 180.0f);
 
-        const auto measure = [&](u32 drawCalls, bool useJobs) {
+        const auto measure = [&](u32 drawCalls, bool useJobs)
+        {
             std::vector<double> samples;
             samples.reserve(kMeasuredFrames);
             for (u32 frame = 0; frame < kWarmupFrames + kMeasuredFrames; ++frame)
@@ -493,9 +493,9 @@ int main()
                 depth.Clear(0.0f);
                 for (u32 call = 0; call < drawCalls; ++call)
                 {
-                    const Mat4 model = Mat4::Translation(
-                        Vec3{static_cast<f32>(call % 6U) * 3.2f - 8.0f, 1.3f,
-                             static_cast<f32>(call / 6U) * 3.2f - 8.0f});
+                    const Mat4 model =
+                        Mat4::Translation(Vec3{static_cast<f32>(call % 6U) * 3.2f - 8.0f, 1.3f,
+                                               static_cast<f32>(call / 6U) * 3.2f - 8.0f});
                     SceneUniforms uniforms{};
                     uniforms.transform.modelViewProjection = projection * view * model;
                     uniforms.transform.modelToWorld = model;

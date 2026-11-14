@@ -1,7 +1,6 @@
-#include <cyber/software/post_process.h>
-
 #include <cyber/jobs/job_system.h>
 #include <cyber/platform/time.h>
+#include <cyber/software/post_process.h>
 
 #include <algorithm>
 #include <cmath>
@@ -34,7 +33,7 @@ using Status = core::Status<Error>;
 
 [[nodiscard]] f32 Saturate(f32 value) noexcept
 {
-    if (!std::isfinite(value))
+    if (!math::IsFinite(value))
     {
         return 0.0f;
     }
@@ -43,7 +42,7 @@ using Status = core::Status<Error>;
 
 [[nodiscard]] f32 SafeFinite(f32 value, f32 fallback = 0.0f) noexcept
 {
-    return std::isfinite(value) ? value : fallback;
+    return math::IsFinite(value) ? value : fallback;
 }
 
 [[nodiscard]] Color Lerp(const Color& from, const Color& to, f32 t) noexcept
@@ -206,9 +205,8 @@ void OcclusionRow(void* userData, u32 index) noexcept
             continue;
         }
 
-        const Vec3 origin =
-            ReconstructViewPosition(x, y, context.width, context.height, linearDepth,
-                                    context.geometry);
+        const Vec3 origin = ReconstructViewPosition(x, y, context.width, context.height,
+                                                    linearDepth, context.geometry);
         const Color encodedNormal = context.normals->GetPixel(x, y);
         Vec3 worldNormal{encodedNormal.r * 2.0f - 1.0f, encodedNormal.g * 2.0f - 1.0f,
                          encodedNormal.b * 2.0f - 1.0f};
@@ -223,7 +221,8 @@ void OcclusionRow(void* userData, u32 index) noexcept
 
         // An orthonormal basis around the normal. The tangent is built from a
         // per-pixel rotation so neighboring pixels do not share a pattern.
-        const Vec3 axis = std::abs(normal.z) < 0.9f ? Vec3{0.0f, 0.0f, 1.0f} : Vec3{1.0f, 0.0f, 0.0f};
+        const Vec3 axis =
+            std::abs(normal.z) < 0.9f ? Vec3{0.0f, 0.0f, 1.0f} : Vec3{1.0f, 0.0f, 0.0f};
         Vec3 tangent = Cross(axis, normal);
         const f32 tangentLength = math::Length(tangent);
         if (!(tangentLength > 1.0e-4f))
@@ -338,8 +337,8 @@ void OcclusionBlurRow(void* userData, u32 index) noexcept
                                                           context.nearPlane, context.farPlane);
                 // Depth-aware: a neighbor on another surface would blur the
                 // occlusion across the silhouette.
-                const f32 relative = std::abs(sampleDepth - centerDepth) /
-                                     std::max(1.0e-4f, std::abs(centerDepth));
+                const f32 relative =
+                    std::abs(sampleDepth - centerDepth) / std::max(1.0e-4f, std::abs(centerDepth));
                 if (relative > context.depthTolerance)
                 {
                     continue;
@@ -393,14 +392,15 @@ struct DepthOfFieldContext
 // Thin-lens circle of confusion, in pixels. The sign is dropped: a near and a
 // far blur of the same magnitude gather the same way here, which is the
 // simplification a single-layer gather makes.
-[[nodiscard]] f32 CircleOfConfusionPixels(f32 viewDepth, const DepthOfFieldContext& context) noexcept
+[[nodiscard]] f32 CircleOfConfusionPixels(f32 viewDepth,
+                                          const DepthOfFieldContext& context) noexcept
 {
     const f32 focalLength = std::max(1.0e-3f, context.focalLengthMm);
     const f32 aperture = focalLength / std::max(1.0e-3f, context.apertureFStop);
     const f32 focus = std::max(focalLength * 1.001f, context.focusDistance * 1000.0f);
     const f32 distance = std::max(focalLength * 1.001f, viewDepth * 1000.0f);
-    const f32 cocMm = std::abs(aperture * focalLength * (distance - focus) /
-                               (distance * (focus - focalLength)));
+    const f32 cocMm =
+        std::abs(aperture * focalLength * (distance - focus) / (distance * (focus - focalLength)));
     return std::min(cocMm * context.pixelsPerMm, context.maxCocPixels);
 }
 
@@ -410,9 +410,8 @@ void DepthOfFieldRow(void* userData, u32 index) noexcept
     const i32 y = static_cast<i32>(index);
     for (i32 x = 0; x < context.width; ++x)
     {
-        const f32 centerDepth = LinearizeReverseZ(context.depth->Get(x, y),
-                                                  context.geometry.nearPlane,
-                                                  context.geometry.farPlane);
+        const f32 centerDepth = LinearizeReverseZ(
+            context.depth->Get(x, y), context.geometry.nearPlane, context.geometry.farPlane);
         const f32 centerCoc = CircleOfConfusionPixels(centerDepth, context);
         if (centerCoc < 0.5f)
         {
@@ -429,30 +428,29 @@ void DepthOfFieldRow(void* userData, u32 index) noexcept
             SpiralSample(sample, context.sampleCount, spiralX, spiralY);
             const f32 sampleX = static_cast<f32>(x) + spiralX * centerCoc;
             const f32 sampleY = static_cast<f32>(y) + spiralY * centerCoc;
-            const i32 texelX = std::clamp(static_cast<i32>(std::lround(sampleX)), 0,
-                                          context.width - 1);
-            const i32 texelY = std::clamp(static_cast<i32>(std::lround(sampleY)), 0,
-                                          context.height - 1);
+            const i32 texelX =
+                std::clamp(static_cast<i32>(std::lround(sampleX)), 0, context.width - 1);
+            const i32 texelY =
+                std::clamp(static_cast<i32>(std::lround(sampleY)), 0, context.height - 1);
 
-            const f32 sampleDepth = LinearizeReverseZ(context.depth->Get(texelX, texelY),
-                                                      context.geometry.nearPlane,
-                                                      context.geometry.farPlane);
+            const f32 sampleDepth =
+                LinearizeReverseZ(context.depth->Get(texelX, texelY), context.geometry.nearPlane,
+                                  context.geometry.farPlane);
             const f32 sampleCoc = CircleOfConfusionPixels(sampleDepth, context);
             // A sharp foreground sample must not bleed onto a blurred
             // background, so a tap only contributes when its own circle of
             // confusion reaches this pixel.
-            const f32 distance = std::sqrt((sampleX - static_cast<f32>(x)) *
-                                               (sampleX - static_cast<f32>(x)) +
-                                           (sampleY - static_cast<f32>(y)) *
-                                               (sampleY - static_cast<f32>(y)));
+            const f32 distance =
+                std::sqrt((sampleX - static_cast<f32>(x)) * (sampleX - static_cast<f32>(x)) +
+                          (sampleY - static_cast<f32>(y)) * (sampleY - static_cast<f32>(y)));
             const f32 reach = std::max(sampleCoc, sampleDepth > centerDepth ? 0.0f : centerCoc);
             if (distance > reach)
             {
                 continue;
             }
             const Color tap = context.source->GetPixel(texelX, texelY);
-            accumulated = Color{accumulated.r + tap.r, accumulated.g + tap.g,
-                                accumulated.b + tap.b, accumulated.a + tap.a};
+            accumulated = Color{accumulated.r + tap.r, accumulated.g + tap.g, accumulated.b + tap.b,
+                                accumulated.a + tap.a};
             weight += 1.0f;
         }
 
@@ -501,13 +499,12 @@ void MotionBlurRow(void* userData, u32 index) noexcept
         {
             // Taps are centered on the pixel and spread over the open shutter,
             // so the blur straddles the sample rather than trailing it.
-            const f32 t = (static_cast<f32>(sample) + 0.5f) /
-                              static_cast<f32>(context.sampleCount) -
-                          0.5f;
+            const f32 t =
+                (static_cast<f32>(sample) + 0.5f) / static_cast<f32>(context.sampleCount) - 0.5f;
             const Color tap = SampleBilinear(*context.source, static_cast<f32>(x) + velocityX * t,
                                              static_cast<f32>(y) + velocityY * t);
-            accumulated = Color{accumulated.r + tap.r, accumulated.g + tap.g,
-                                accumulated.b + tap.b, accumulated.a + tap.a};
+            accumulated = Color{accumulated.r + tap.r, accumulated.g + tap.g, accumulated.b + tap.b,
+                                accumulated.a + tap.a};
         }
         const f32 inverse = 1.0f / static_cast<f32>(context.sampleCount);
         context.destination->SetPixel(x, y,
@@ -556,8 +553,8 @@ void BrightPassRow(void* userData, u32 index) noexcept
         const f32 contribution =
             std::max(soft * soft / (4.0f * knee), luminance - context.threshold);
         const f32 scale = luminance > 1.0e-6f ? std::max(0.0f, contribution) / luminance : 0.0f;
-        context.destination->SetPixel(x, y,
-                                      Color{color.r * scale, color.g * scale, color.b * scale, 1.0f});
+        context.destination->SetPixel(
+            x, y, Color{color.r * scale, color.g * scale, color.b * scale, 1.0f});
     }
 }
 
@@ -587,7 +584,8 @@ void DownsampleRow(void* userData, u32 index) noexcept
                 sum = Color{sum.r + texel.r, sum.g + texel.g, sum.b + texel.b, sum.a + texel.a};
             }
         }
-        context.destination->SetPixel(x, y, Color{sum.r * 0.25f, sum.g * 0.25f, sum.b * 0.25f, 1.0f});
+        context.destination->SetPixel(x, y,
+                                      Color{sum.r * 0.25f, sum.g * 0.25f, sum.b * 0.25f, 1.0f});
     }
 }
 
@@ -694,8 +692,7 @@ void ResolveRow(void* userData, u32 index) noexcept
 class ScopedTimer
 {
 public:
-    explicit ScopedTimer(PassTiming* timing) noexcept
-        : m_timing(timing), m_start(NowNanoseconds())
+    explicit ScopedTimer(PassTiming* timing) noexcept : m_timing(timing), m_start(NowNanoseconds())
     {
     }
 
@@ -731,7 +728,7 @@ f32 LinearizeReverseZ(f32 depth, f32 nearPlane, f32 farPlane) noexcept
 {
     const f32 near = std::max(1.0e-6f, nearPlane);
     const f32 far = std::max(near * 1.000001f, farPlane);
-    if (!std::isfinite(depth))
+    if (!math::IsFinite(depth))
     {
         return far;
     }
@@ -748,7 +745,8 @@ ViewGeometry MakeViewGeometry(const PostProcessView& view) noexcept
 {
     ViewGeometry geometry{};
     geometry.nearPlane = std::max(1.0e-6f, SafeFinite(view.nearPlane, 0.1f));
-    geometry.farPlane = std::max(geometry.nearPlane * 1.000001f, SafeFinite(view.farPlane, 1000.0f));
+    geometry.farPlane =
+        std::max(geometry.nearPlane * 1.000001f, SafeFinite(view.farPlane, 1000.0f));
 
     // A perspective projection stores 1 / (aspect * tan(fovY / 2)) and
     // 1 / tan(fovY / 2) on its diagonal; recovering the tangents keeps the
@@ -756,9 +754,9 @@ ViewGeometry MakeViewGeometry(const PostProcessView& view) noexcept
     const f32 scaleX = view.projection.columns[0].x;
     const f32 scaleY = view.projection.columns[1].y;
     geometry.tanHalfFovX =
-        (std::isfinite(scaleX) && std::abs(scaleX) > 1.0e-6f) ? 1.0f / std::abs(scaleX) : 1.0f;
+        (math::IsFinite(scaleX) && std::abs(scaleX) > 1.0e-6f) ? 1.0f / std::abs(scaleX) : 1.0f;
     geometry.tanHalfFovY =
-        (std::isfinite(scaleY) && std::abs(scaleY) > 1.0e-6f) ? 1.0f / std::abs(scaleY) : 1.0f;
+        (math::IsFinite(scaleY) && std::abs(scaleY) > 1.0e-6f) ? 1.0f / std::abs(scaleY) : 1.0f;
     return geometry;
 }
 
@@ -786,7 +784,7 @@ Status BuildLuminanceHistogram(const Framebuffer& hdrColor, f32 minLogLuminance,
     {
         return InvalidArgument("histogram source is invalid");
     }
-    if (!std::isfinite(minLogLuminance) || !std::isfinite(maxLogLuminance) ||
+    if (!math::IsFinite(minLogLuminance) || !math::IsFinite(maxLogLuminance) ||
         maxLogLuminance <= minLogLuminance)
     {
         return InvalidArgument("histogram log range is empty");
@@ -804,7 +802,7 @@ Status BuildLuminanceHistogram(const Framebuffer& hdrColor, f32 minLogLuminance,
         {
             const f32 luminance = Luminance(hdrColor.GetPixel(x, y));
             i32 bin = 0;
-            if (std::isfinite(luminance) && luminance > 0.0f)
+            if (math::IsFinite(luminance) && luminance > 0.0f)
             {
                 const f32 logLuminance = std::log2(luminance);
                 const f32 position = (logLuminance - minLogLuminance) * scale;
@@ -820,7 +818,7 @@ Status BuildLuminanceHistogram(const Framebuffer& hdrColor, f32 minLogLuminance,
 f32 HistogramAverageLuminance(const LuminanceHistogram& histogram, f32 lowPercent,
                               f32 highPercent) noexcept
 {
-    if (histogram.totalSamples == 0u || !std::isfinite(lowPercent) || !std::isfinite(highPercent))
+    if (histogram.totalSamples == 0u || !math::IsFinite(lowPercent) || !math::IsFinite(highPercent))
     {
         return kMiddleGrey;
     }
@@ -869,12 +867,12 @@ f32 HistogramAverageLuminance(const LuminanceHistogram& histogram, f32 lowPercen
     }
     const f32 averageLog = weightedLog / weight;
     const f32 average = std::exp2(averageLog);
-    return std::isfinite(average) && average > 0.0f ? average : kMiddleGrey;
+    return math::IsFinite(average) && average > 0.0f ? average : kMiddleGrey;
 }
 
 f32 ExposureEvForAverageLuminance(f32 averageLuminance) noexcept
 {
-    if (!std::isfinite(averageLuminance) || averageLuminance <= 0.0f)
+    if (!math::IsFinite(averageLuminance) || averageLuminance <= 0.0f)
     {
         return 0.0f;
     }
@@ -885,7 +883,7 @@ f32 AdaptExposure(ExposureState& state, f32 targetEv, f32 deltaSeconds,
                   const ExposureSettings& settings) noexcept
 {
     const f32 target = SafeFinite(targetEv);
-    if (!state.adapted || !std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f)
+    if (!state.adapted || !math::IsFinite(deltaSeconds) || deltaSeconds <= 0.0f)
     {
         state.currentEv = target;
         state.adapted = true;
@@ -922,7 +920,8 @@ core::Result<f32, Error> ComputeExposureEv(const Framebuffer& hdrColor,
 
     if (!hdrColor.IsValid())
     {
-        return Computed::Err(Error{ErrorCode::InvalidArgument, "exposure metering source is invalid"});
+        return Computed::Err(
+            Error{ErrorCode::InvalidArgument, "exposure metering source is invalid"});
     }
 
     LuminanceHistogram histogram{};
@@ -1016,8 +1015,7 @@ Color ApplyColorGrade(const Color& color, const ColorGradeSettings& settings) no
     const f32 saturation = std::max(0.0f, SafeFinite(settings.saturation, 1.0f));
     if (saturation != 1.0f)
     {
-        const f32 luminance =
-            Luminance(Color{channels[0], channels[1], channels[2], 1.0f});
+        const f32 luminance = Luminance(Color{channels[0], channels[1], channels[2], 1.0f});
         for (f32& value : channels)
         {
             value = Saturate(luminance + (value - luminance) * saturation);
@@ -1133,7 +1131,8 @@ core::Result<ColorGradeLut, Error> ColorGradeLut::FromEntries(memory::Span<const
         static_cast<usize>(size) * static_cast<usize>(size) * static_cast<usize>(size);
     if (entries.Size() != entryCount || entries.Data() == nullptr)
     {
-        return Created::Err(Error{ErrorCode::InvalidArgument, "lut entry count does not match size"});
+        return Created::Err(
+            Error{ErrorCode::InvalidArgument, "lut entry count does not match size"});
     }
 
     void* storage = allocator.Allocate(entryCount * sizeof(Color), alignof(Color));
@@ -1239,14 +1238,15 @@ const char* PostProcessPassName(PostProcessPass pass) noexcept
     return "unknown";
 }
 
-core::Result<PostProcessStack, Error> PostProcessStack::Create(i32 width, i32 height,
-                                                               memory::Allocator& allocator) noexcept
+core::Result<PostProcessStack, Error>
+PostProcessStack::Create(i32 width, i32 height, memory::Allocator& allocator) noexcept
 {
     using Created = core::Result<PostProcessStack, Error>;
 
     if (width < 1 || width > 16384 || height < 1 || height > 16384)
     {
-        return Created::Err(Error{ErrorCode::InvalidArgument, "post stack dimensions out of range"});
+        return Created::Err(
+            Error{ErrorCode::InvalidArgument, "post stack dimensions out of range"});
     }
 
     PostProcessStack stack;
@@ -1652,9 +1652,9 @@ Status PostProcessStack::Execute(const PostProcessInputs& inputs, Framebuffer& d
     resolve.width = m_width;
 
     {
-        PassTiming* toneTiming =
-            settings.enableToneMap ? &local.passes[static_cast<i32>(PostProcessPass::ToneMap)]
-                                   : nullptr;
+        PassTiming* toneTiming = settings.enableToneMap
+                                     ? &local.passes[static_cast<i32>(PostProcessPass::ToneMap)]
+                                     : nullptr;
         PassTiming* gradeTiming =
             gradeReady ? &local.passes[static_cast<i32>(PostProcessPass::ColorGrade)] : nullptr;
         const u64 resolveStart = NowNanoseconds();

@@ -3,6 +3,9 @@
 #include <cstring>
 #include <functional>
 #include <pthread.h>
+#if defined(__linux__)
+#include <sys/resource.h>
+#endif
 #include <thread>
 
 namespace cyber::platform
@@ -123,6 +126,31 @@ void Thread::SetCurrentThreadName(const char* name) noexcept
 u64 Thread::CurrentThreadId() noexcept
 {
     return static_cast<u64>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+}
+
+bool Thread::SetCurrentThreadPriority(ThreadPriority priority) noexcept
+{
+#if defined(__linux__)
+    // Under SCHED_OTHER, Linux applies setpriority(PRIO_PROCESS, 0) to the
+    // calling thread only, which is the per-thread nice value we want.
+    int nice = 0;
+    switch (priority)
+    {
+    case ThreadPriority::Low:
+        nice = 5;
+        break;
+    case ThreadPriority::Normal:
+        nice = 0;
+        break;
+    case ThreadPriority::High:
+        nice = -5;
+        break;
+    }
+    return setpriority(PRIO_PROCESS, 0, nice) == 0;
+#else
+    (void)priority;
+    return false;
+#endif
 }
 
 }  // namespace cyber::platform

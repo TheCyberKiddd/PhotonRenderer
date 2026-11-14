@@ -26,7 +26,7 @@ f32 Luminance(const math::Color& value) noexcept
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 f64 LaplacianEnergy(const Framebuffer& image) noexcept
@@ -44,7 +44,7 @@ f64 LaplacianEnergy(const Framebuffer& image) noexcept
                 Luminance(image.GetPixel(x - 1, y)) + Luminance(image.GetPixel(x + 1, y)) +
                 Luminance(image.GetPixel(x, y - 1)) + Luminance(image.GetPixel(x, y + 1));
             const f32 laplacian = neighbours - 4.0f * center;
-            if (std::isfinite(laplacian))
+            if (math::IsFinite(laplacian))
             {
                 sum += std::fabs(laplacian);
                 ++count;
@@ -67,8 +67,8 @@ core::Status<core::Error> MeasureIrradianceError(memory::Span<const math::Vec3> 
         return StatusType::Err(ErrorCode::InvalidArgument,
                                "irradiance spans are empty or mismatched");
     }
-    if (!(luminanceFloor > 0.0f) || !(tolerance > 0.0f) || !std::isfinite(luminanceFloor) ||
-        !std::isfinite(tolerance))
+    if (!(luminanceFloor > 0.0f) || !(tolerance > 0.0f) || !math::IsFinite(luminanceFloor) ||
+        !math::IsFinite(tolerance))
     {
         return StatusType::Err(ErrorCode::InvalidArgument, "irradiance floor or tolerance invalid");
     }
@@ -116,7 +116,7 @@ core::Status<core::Error> MeasureLightLeak(memory::Span<const math::Vec3> darkSi
     using StatusType = core::Status<core::Error>;
     const f32 lit = IsFinite(litReference) ? Luminance(litReference) : 0.0f;
     if (darkSide.Empty() || !(lit > 0.0f) || !(leakThreshold > 0.0f) ||
-        !std::isfinite(leakThreshold))
+        !math::IsFinite(leakThreshold))
     {
         return StatusType::Err(ErrorCode::InvalidArgument, "light leak inputs are invalid");
     }
@@ -166,7 +166,7 @@ core::Status<core::Error> MeasureNoise(const Framebuffer& image, const Framebuff
         {
             const f32 value = Luminance(image.GetPixel(x, y));
             const f32 expected = Luminance(reference.GetPixel(x, y));
-            if (!std::isfinite(value) || !std::isfinite(expected))
+            if (!math::IsFinite(value) || !math::IsFinite(expected))
             {
                 continue;
             }

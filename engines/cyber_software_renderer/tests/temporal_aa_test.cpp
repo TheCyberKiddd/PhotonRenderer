@@ -112,8 +112,8 @@ CG_TEST(ProjectionJitterShiftsTheImageByExactlyOnePixelOffset)
 
     // A point projected through both matrices must land exactly one offset
     // apart in pixels, with depth untouched.
-    for (const Vec3 point : {Vec3{0.0f, 0.0f, -5.0f}, Vec3{1.5f, -0.75f, -12.0f},
-                             Vec3{-2.0f, 3.0f, -3.0f}})
+    for (const Vec3 point :
+         {Vec3{0.0f, 0.0f, -5.0f}, Vec3{1.5f, -0.75f, -12.0f}, Vec3{-2.0f, 3.0f, -3.0f}})
     {
         const Vec3 base = projection.TransformPoint(point);
         const Vec3 shifted = jittered.TransformPoint(point);
@@ -170,18 +170,18 @@ CG_TEST(ResolveValidatesItsArguments)
     CG_REQUIRE(MakeImage(heap, wrongSize, kSize / 2, kSize));
 
     TemporalAaSettings settings{};
-    CG_EXPECT_FALSE(resolver.Resolve(wrongSize, nullptr, destination, settings, nullptr, nullptr)
-                        .IsOk());
+    CG_EXPECT_FALSE(
+        resolver.Resolve(wrongSize, nullptr, destination, settings, nullptr, nullptr).IsOk());
     CG_EXPECT_FALSE(resolver.Resolve(color, nullptr, wrongSize, settings, nullptr, nullptr).IsOk());
-    CG_EXPECT_FALSE(resolver.Resolve(color, &wrongSize, destination, settings, nullptr, nullptr)
-                        .IsOk());
+    CG_EXPECT_FALSE(
+        resolver.Resolve(color, &wrongSize, destination, settings, nullptr, nullptr).IsOk());
     CG_EXPECT_FALSE(resolver.Resolve(color, nullptr, color, settings, nullptr, nullptr).IsOk());
 
     // A history weight of 1 would never converge, so it is rejected rather
     // than silently clamped.
     settings.historyWeight = 1.0f;
-    CG_EXPECT_FALSE(resolver.Resolve(color, nullptr, destination, settings, nullptr, nullptr)
-                        .IsOk());
+    CG_EXPECT_FALSE(
+        resolver.Resolve(color, nullptr, destination, settings, nullptr, nullptr).IsOk());
 
     CG_EXPECT_FALSE(TemporalAaResolver::Create(0, kSize, heap).IsOk());
 }
@@ -207,8 +207,10 @@ CG_TEST(StaticSceneConvergesTowardTheAccumulatedAverage)
     // answer is their average, which is the sample the pixel never renders.
     for (i32 frame = 0; frame < 64; ++frame)
     {
-        color.Clear((frame % 2) == 0 ? Color{1.0f, 1.0f, 1.0f, 1.0f} : Color{0.0f, 0.0f, 0.0f, 1.0f});
-        CG_REQUIRE(resolver.Resolve(color, nullptr, destination, settings, nullptr, nullptr).IsOk());
+        color.Clear((frame % 2) == 0 ? Color{1.0f, 1.0f, 1.0f, 1.0f}
+                                     : Color{0.0f, 0.0f, 0.0f, 1.0f});
+        CG_REQUIRE(
+            resolver.Resolve(color, nullptr, destination, settings, nullptr, nullptr).IsOk());
     }
     CG_EXPECT_NEAR(destination.GetPixel(kSize / 2, kSize / 2).r, 0.5f, 0.1f);
 }
@@ -277,7 +279,8 @@ CG_TEST(VelocityReprojectionFollowsTheMotionAndRejectsDisocclusions)
     // A vertical bar that moves four pixels right per frame, with a velocity
     // buffer that says so. History sampled along that velocity lands on the
     // same bar, so the bar stays sharp instead of smearing.
-    const auto drawBar = [&color](i32 position) {
+    const auto drawBar = [&color](i32 position)
+    {
         color.Clear(Color{0.0f, 0.0f, 0.0f, 1.0f});
         color.ClearRect(position, 0, 6, kSize, Color{1.0f, 1.0f, 1.0f, 1.0f});
     };
@@ -307,7 +310,6 @@ CG_TEST(VelocityReprojectionFollowsTheMotionAndRejectsDisocclusions)
     CG_EXPECT_TRUE(ImagesEqual(color, destination));
 }
 
-
 CG_TEST(FlickerRelaxationKeepsASubPixelFeatureAStrictClampLosesAndStillDropsACut)
 {
     HeapAllocator heap;
@@ -321,7 +323,8 @@ CG_TEST(FlickerRelaxationKeepsASubPixelFeatureAStrictClampLosesAndStillDropsACut
     // half: a feature narrower than a pixel, as a jittered sample sees it. Its
     // correct resolved value is the average of the two, 0.5, and no single
     // frame ever contains that value anywhere in the column's neighborhood.
-    const auto renderPhase = [&color](bool lit) {
+    const auto renderPhase = [&color](bool lit)
+    {
         color.Clear(Color{0.0f, 0.0f, 0.0f, 1.0f});
         if (lit)
         {
@@ -331,7 +334,8 @@ CG_TEST(FlickerRelaxationKeepsASubPixelFeatureAStrictClampLosesAndStillDropsACut
 
     // A failure inside this helper reports as -1, which no assertion below
     // accepts, so a broken resolve cannot pass as a converged one.
-    const auto converge = [&](f32 relaxation) -> f32 {
+    const auto converge = [&](f32 relaxation) -> f32
+    {
         TemporalAaSettings settings{};
         settings.historyWeight = 0.9f;
         settings.clampHistory = true;
@@ -452,9 +456,8 @@ CG_TEST(DepthRejectionStopsAnOccluderFromTrailingAcrossWhatItUncovers)
 
     // Reverse-Z value for a view-space distance, the inverse of
     // LinearizeReverseZ.
-    const auto encodeDepth = [](f32 distance) {
-        return (kNear * kFar / distance - kNear) / (kFar - kNear);
-    };
+    const auto encodeDepth = [](f32 distance)
+    { return (kNear * kFar / distance - kNear) / (kFar - kNear); };
 
     Framebuffer color;
     Framebuffer velocity;
@@ -475,7 +478,8 @@ CG_TEST(DepthRejectionStopsAnOccluderFromTrailingAcrossWhatItUncovers)
     // bar uncovers reprojects onto itself -- where the bar was. That is the
     // disocclusion a velocity buffer cannot describe: the velocity is
     // correct, and the history it points at is still the wrong surface.
-    const auto renderFrame = [&](i32 barStart) {
+    const auto renderFrame = [&](i32 barStart)
+    {
         color.Clear(Color{0.05f, 0.05f, 0.05f, 1.0f});
         color.ClearRect(barStart, 0, kBarWidth, kSize, Color{1.0f, 1.0f, 1.0f, 1.0f});
         velocity.Clear(Color{0.0f, 0.0f, 0.0f, 1.0f});
@@ -497,7 +501,8 @@ CG_TEST(DepthRejectionStopsAnOccluderFromTrailingAcrossWhatItUncovers)
     const i32 finalBarStart = 4 + (kFrames - 1) * kStep;
     const i32 uncovered = finalBarStart - 1;
 
-    const auto run = [&](bool supplyDepth, TemporalAaStats& stats) -> f32 {
+    const auto run = [&](bool supplyDepth, TemporalAaStats& stats) -> f32
+    {
         auto created = TemporalAaResolver::Create(kSize, kSize, heap);
         if (!created)
         {
@@ -598,8 +603,7 @@ CG_TEST(DepthInputIsValidatedAndTheTestStartsOnceItHasSomethingToCompare)
     TemporalAaInputs mismatched{};
     mismatched.color = &color;
     mismatched.depth = &small;
-    CG_EXPECT_FALSE(
-        resolver.Resolve(mismatched, destination, settings, nullptr, nullptr).IsOk());
+    CG_EXPECT_FALSE(resolver.Resolve(mismatched, destination, settings, nullptr, nullptr).IsOk());
 
     TemporalAaInputs noColor{};
     CG_EXPECT_FALSE(resolver.Resolve(noColor, destination, settings, nullptr, nullptr).IsOk());
@@ -681,8 +685,8 @@ CG_TEST(FxaaSoftensEdgesAndLeavesFlatAreasAlone)
         for (i32 x = 0; x < 64; ++x)
         {
             const bool inside = static_cast<f32>(x) < 20.0f + static_cast<f32>(y) * 0.2f;
-            source.SetPixel(x, y, inside ? Color{1.0f, 1.0f, 1.0f, 1.0f}
-                                         : Color{0.05f, 0.05f, 0.05f, 1.0f});
+            source.SetPixel(
+                x, y, inside ? Color{1.0f, 1.0f, 1.0f, 1.0f} : Color{0.05f, 0.05f, 0.05f, 1.0f});
         }
     }
 

@@ -85,7 +85,7 @@ core::Status<core::Error> WriteDifferenceImage(const char* utf8Path, const Frame
         return core::Status<core::Error>::Err(core::Error{
             core::ErrorCode::InvalidArgument, "images are invalid or have different dimensions"});
     }
-    if (!(amplification > 0.0f) || !std::isfinite(amplification))
+    if (!(amplification > 0.0f) || !math::IsFinite(amplification))
     {
         amplification = 1.0f;
     }

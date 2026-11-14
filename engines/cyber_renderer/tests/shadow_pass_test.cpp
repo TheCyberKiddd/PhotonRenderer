@@ -3,8 +3,8 @@
 #include <cyber/renderer/shadow_pass.h>
 #include <cyber/rhi/backend.h>
 #include <cyber/rhi/command_list.h>
-#include <cyber/rhi/device.h>
 #include <cyber/rhi/d3d12.h>
+#include <cyber/rhi/device.h>
 #include <cyber/rhi/resource_state.h>
 #include <cyber/rhi/submission.h>
 #include <cyber/test/test.h>
@@ -114,9 +114,8 @@ RecordGpuShadowGeometry(cyber::renderer::RenderPassContext& context, void* userD
         !commands.SetPipeline(draw.pipeline) || !commands.SetVertexBuffer(0, draw.vertices) ||
         !commands.Draw(cyber::rhi::DrawArguments{3, 1, 0, 0}))
     {
-        return cyber::core::Status<cyber::core::Error>::Err(
-            cyber::core::Error{cyber::core::ErrorCode::Internal,
-                               "failed to record GPU shadow geometry"});
+        return cyber::core::Status<cyber::core::Error>::Err(cyber::core::Error{
+            cyber::core::ErrorCode::Internal, "failed to record GPU shadow geometry"});
     }
     return cyber::core::Status<cyber::core::Error>::Ok();
 }
@@ -167,8 +166,7 @@ RecordGpuShadowedLighting(cyber::renderer::RenderPassContext& context, void* use
     const Status<cyber::core::Error> group =
         commands.SetBindGroup(BindGroupSlot::PerView, draw.shadowBindings);
     const Status<cyber::core::Error> vertexBuffer = commands.SetVertexBuffer(0, draw.vertices);
-    const Status<cyber::core::Error> drawn =
-        commands.Draw(DrawArguments{3, 1, 0, 0});
+    const Status<cyber::core::Error> drawn = commands.Draw(DrawArguments{3, 1, 0, 0});
     const Status<cyber::core::Error> ended = commands.EndRenderPass();
     if (!viewport)
     {
@@ -334,8 +332,7 @@ CG_TEST(renderer_shadow_sampling_pass_transitions_all_shadow_maps)
     probe.expectedTextures[1] = maps[1].depthTexture;
     ShadowSamplingPassDesc samplingPass{};
     samplingPass.name = "Sample directional cascades";
-    samplingPass.shadowResources =
-        cyber::memory::Span<const GraphResourceHandle>(resources, 2);
+    samplingPass.shadowResources = cyber::memory::Span<const GraphResourceHandle>(resources, 2);
     samplingPass.record = &RecordShadowSamplingProbe;
     samplingPass.userData = &probe;
     CG_REQUIRE(AddShadowSamplingPass(graph, samplingPass).IsOk());
@@ -499,8 +496,7 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
     shadowBindings[1].sampler = shadowSampler.Value();
     BindGroupDesc shadowBindGroupDesc{};
     shadowBindGroupDesc.layout = shadowGroupLayout.Value();
-    shadowBindGroupDesc.resources =
-        cyber::memory::Span<const BindingResource>(shadowBindings, 2);
+    shadowBindGroupDesc.resources = cyber::memory::Span<const BindingResource>(shadowBindings, 2);
     auto shadowBindGroup = device.CreateBindGroup(shadowBindGroupDesc);
     CG_REQUIRE(static_cast<bool>(shadowBindGroup));
 
@@ -555,7 +551,8 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
     const auto fullscreenVertexBytes = cyber::memory::Span<const cyber::memory::Byte>(
         reinterpret_cast<const cyber::memory::Byte*>(kFullscreenVertices.data()),
         sizeof(kFullscreenVertices));
-    CG_REQUIRE(device.WriteBuffer(staging.Value(), sizeof(kVertices), fullscreenVertexBytes).IsOk());
+    CG_REQUIRE(
+        device.WriteBuffer(staging.Value(), sizeof(kVertices), fullscreenVertexBytes).IsOk());
     BufferDesc vertexBufferDesc{};
     vertexBufferDesc.usage = BufferUsage::Vertex | BufferUsage::CopyDestination;
     vertexBufferDesc.sizeBytes = sizeof(kVertices);
@@ -575,27 +572,26 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
     const BufferBarrier uploadBarriers[] = {
         {staging.Value(), ResourceState::Undefined, ResourceState::CopySource},
         {vertexBuffer.Value(), ResourceState::Undefined, ResourceState::CopyDestination},
-        {fullscreenVertexBuffer.Value(), ResourceState::Undefined,
-         ResourceState::CopyDestination},
+        {fullscreenVertexBuffer.Value(), ResourceState::Undefined, ResourceState::CopyDestination},
     };
-    CG_REQUIRE(commandList.Barrier(
-                   cyber::memory::Span<const BufferBarrier>(uploadBarriers, 3))
-                   .IsOk());
-    CG_REQUIRE(commandList.CopyBuffer(
-                   BufferCopy{staging.Value(), 0, vertexBuffer.Value(), 0, sizeof(kVertices)})
-                   .IsOk());
-    CG_REQUIRE(commandList.CopyBuffer(BufferCopy{staging.Value(), sizeof(kVertices),
-                                                 fullscreenVertexBuffer.Value(), 0,
-                                                 sizeof(kFullscreenVertices)})
-                   .IsOk());
+    CG_REQUIRE(
+        commandList.Barrier(cyber::memory::Span<const BufferBarrier>(uploadBarriers, 3)).IsOk());
+    CG_REQUIRE(
+        commandList
+            .CopyBuffer(BufferCopy{staging.Value(), 0, vertexBuffer.Value(), 0, sizeof(kVertices)})
+            .IsOk());
+    CG_REQUIRE(
+        commandList
+            .CopyBuffer(BufferCopy{staging.Value(), sizeof(kVertices),
+                                   fullscreenVertexBuffer.Value(), 0, sizeof(kFullscreenVertices)})
+            .IsOk());
     const BufferBarrier vertexReady[] = {
         {vertexBuffer.Value(), ResourceState::CopyDestination, ResourceState::VertexBuffer},
         {fullscreenVertexBuffer.Value(), ResourceState::CopyDestination,
          ResourceState::VertexBuffer},
     };
-    CG_REQUIRE(commandList.Barrier(
-                   cyber::memory::Span<const BufferBarrier>(vertexReady, 2))
-                   .IsOk());
+    CG_REQUIRE(
+        commandList.Barrier(cyber::memory::Span<const BufferBarrier>(vertexReady, 2)).IsOk());
 
     GpuShadowDraw draw{pipeline.Value(), vertexBuffer.Value(), kResolution};
     ShadowDepthPassDesc pass{};
@@ -636,8 +632,9 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
                                      ResourceState::DepthWrite, ResourceState::CopySource};
     const BufferBarrier readbackReady{readback.Value(), ResourceState::Undefined,
                                       ResourceState::CopyDestination};
-    CG_REQUIRE(copyList.Barrier(cyber::memory::Span<const BufferBarrier>(&readbackReady, 1),
-                                cyber::memory::Span<const TextureBarrier>(&depthToCopy, 1))
+    CG_REQUIRE(copyList
+                   .Barrier(cyber::memory::Span<const BufferBarrier>(&readbackReady, 1),
+                            cyber::memory::Span<const TextureBarrier>(&depthToCopy, 1))
                    .IsOk());
     BufferTextureCopy copy{};
     copy.buffer = readback.Value();
@@ -658,9 +655,10 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
     CG_REQUIRE(device.WaitFence(fence.Value(), 2).IsOk());
 
     std::array<cyber::memory::Byte, static_cast<std::size_t>(kReadbackBytes)> depthPixels{};
-    CG_REQUIRE(device.ReadBuffer(
-                   readback.Value(), 0,
-                   cyber::memory::Span<cyber::memory::Byte>(depthPixels.data(), depthPixels.size()))
+    CG_REQUIRE(device
+                   .ReadBuffer(readback.Value(), 0,
+                               cyber::memory::Span<cyber::memory::Byte>(depthPixels.data(),
+                                                                        depthPixels.size()))
                    .IsOk());
     float centerDepth = 0.0f;
     std::memcpy(&centerDepth,
@@ -686,8 +684,7 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
 
     BufferDesc sampleReadbackDesc{};
     sampleReadbackDesc.usage = BufferUsage::Readback | BufferUsage::CopyDestination;
-    sampleReadbackDesc.sizeBytes =
-        static_cast<cyber::core::u64>(kResolution) * kResolution * 4;
+    sampleReadbackDesc.sizeBytes = static_cast<cyber::core::u64>(kResolution) * kResolution * 4;
     auto sampleReadback = device.CreateBuffer(sampleReadbackDesc);
     CG_REQUIRE(static_cast<bool>(sampleReadback));
 
@@ -696,15 +693,10 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
         ImportShadowMap(sampleGraph, "d3d12_shadow_depth_for_lighting", shadowResources);
     CG_REQUIRE(static_cast<bool>(sampledDepthResource));
     const GraphResourceHandle sampledDepthResources[] = {sampledDepthResource.Value()};
-    GpuShadowedLightingDraw lightingDraw{samplePipeline.Value(),
-                                          shadowBindGroup.Value(),
-                                          fullscreenVertexBuffer.Value(),
-                                          shadowResources.depthTexture,
-                                          sampledDepthResource.Value(),
-                                          sampleColor.Value(),
-                                          sampleColorView.Value(),
-                                          sampleReadback.Value(),
-                                          kResolution};
+    GpuShadowedLightingDraw lightingDraw{
+        samplePipeline.Value(),       shadowBindGroup.Value(),      fullscreenVertexBuffer.Value(),
+        shadowResources.depthTexture, sampledDepthResource.Value(), sampleColor.Value(),
+        sampleColorView.Value(),      sampleReadback.Value(),       kResolution};
     ShadowSamplingPassDesc samplingPass{};
     samplingPass.name = "D3D12 shadowed receiver lighting";
     samplingPass.shadowResources =
@@ -724,8 +716,7 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
     const FenceSignal sampleSignal{fence.Value(), 3};
     SubmitDesc sampleSubmit{};
     sampleSubmit.queue = QueueKind::Graphics;
-    sampleSubmit.commandLists =
-        cyber::memory::Span<const CommandListHandle>(&sampleListHandle, 1);
+    sampleSubmit.commandLists = cyber::memory::Span<const CommandListHandle>(&sampleListHandle, 1);
     sampleSubmit.signals = cyber::memory::Span<const FenceSignal>(&sampleSignal, 1);
     CG_REQUIRE(device.Submit(sampleSubmit).IsOk());
     CG_REQUIRE(sampleGraph.AcknowledgeSubmission().IsOk());
@@ -733,17 +724,16 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
 
     std::array<cyber::memory::Byte, static_cast<std::size_t>(kResolution) * kResolution * 4>
         samplePixels{};
-    CG_REQUIRE(device.ReadBuffer(
-                   sampleReadback.Value(), 0,
-                   cyber::memory::Span<cyber::memory::Byte>(samplePixels.data(),
-                                                            samplePixels.size()))
+    CG_REQUIRE(device
+                   .ReadBuffer(sampleReadback.Value(), 0,
+                               cyber::memory::Span<cyber::memory::Byte>(samplePixels.data(),
+                                                                        samplePixels.size()))
                    .IsOk());
     const std::size_t centerPixel =
         (static_cast<std::size_t>(kResolution / 2) * kResolution + kResolution / 2) * 4;
     const std::size_t litPixel = (2 * static_cast<std::size_t>(kResolution) + 2) * 4;
-    const auto channel = [&samplePixels](std::size_t pixel, std::size_t component) {
-        return static_cast<cyber::core::u8>(samplePixels[pixel + component]);
-    };
+    const auto channel = [&samplePixels](std::size_t pixel, std::size_t component)
+    { return static_cast<cyber::core::u8>(samplePixels[pixel + component]); };
     const cyber::core::u32 shadowedLuminance =
         channel(centerPixel, 0) + channel(centerPixel, 1) + channel(centerPixel, 2);
     const cyber::core::u32 litLuminance =

@@ -5,6 +5,7 @@
 #include <cyber/renderer/gpu_culling_pipeline.h>
 #include <cyber/renderer/gpu_driven.h>
 #include <cyber/renderer/gpu_light_culling.h>
+#include <cyber/renderer/gpu_texture_pool.h>
 #include <cyber/renderer/hot_pipeline.h>
 #include <cyber/renderer/material.h>
 #include <cyber/renderer/meshlet.h>
@@ -12,6 +13,8 @@
 #include <cyber/renderer/reflected_layout.h>
 #include <cyber/renderer/render_graph.h>
 #include <cyber/renderer/render_thread.h>
+#include <cyber/renderer/texture_streaming.h>
+#include <cyber/renderer/virtual_texture.h>
 #include <cyber/test/test.h>
 
 #include <type_traits>

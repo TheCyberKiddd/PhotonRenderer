@@ -13,6 +13,8 @@ add_subdirectory(12_post_process)
 add_subdirectory(13_showcase)
 add_subdirectory(14_global_illumination)
 add_subdirectory(15_gallery)
+add_subdirectory(18_texture_streaming)
+add_subdirectory(19_virtual_texture)
 
 if(CYBER_RHI_ENABLE_D3D12)
     add_subdirectory(05_d3d12_markers)

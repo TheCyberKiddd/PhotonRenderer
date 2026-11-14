@@ -50,9 +50,9 @@ cyber::math::Mat4 CameraView(const Camera& camera) noexcept
 
 cyber::math::Mat4 CameraProjection(const Camera& camera, f32 aspect) noexcept
 {
-    if (!std::isfinite(aspect) || aspect <= 0.0f || !std::isfinite(camera.fovYRadians) ||
+    if (!math::IsFinite(aspect) || aspect <= 0.0f || !math::IsFinite(camera.fovYRadians) ||
         camera.fovYRadians <= 0.0f || camera.fovYRadians >= cyber::math::kPi ||
-        !std::isfinite(camera.nearPlane) || !std::isfinite(camera.farPlane) ||
+        !math::IsFinite(camera.nearPlane) || !math::IsFinite(camera.farPlane) ||
         camera.nearPlane <= 0.0f || camera.farPlane <= camera.nearPlane)
     {
         return cyber::math::Mat4::Identity();
@@ -69,7 +69,7 @@ void UpdateFlyCamera(FlyCamera& fly, const FlyCameraInput& input, f32 deltaSecon
         cyber::math::Clamp(camera.pitchRadians + input.pitchDelta, -kMaxPitch, kMaxPitch);
 
     f32 delta = deltaSeconds;
-    if (!std::isfinite(delta) || delta < 0.0f)
+    if (!math::IsFinite(delta) || delta < 0.0f)
     {
         delta = 0.0f;
     }
@@ -81,7 +81,7 @@ void UpdateFlyCamera(FlyCamera& fly, const FlyCameraInput& input, f32 deltaSecon
     f32 forward = input.moveForward;
     f32 right = input.moveRight;
     f32 up = input.moveUp;
-    if (!std::isfinite(forward) || !std::isfinite(right) || !std::isfinite(up))
+    if (!math::IsFinite(forward) || !math::IsFinite(right) || !math::IsFinite(up))
     {
         return;
     }
@@ -100,7 +100,7 @@ void UpdateFlyCamera(FlyCamera& fly, const FlyCameraInput& input, f32 deltaSecon
     {
         speed *= fly.fastMultiplier;
     }
-    if (!std::isfinite(speed) || speed <= 0.0f)
+    if (!math::IsFinite(speed) || speed <= 0.0f)
     {
         return;
     }
@@ -127,9 +127,9 @@ cyber::math::Mat4 OrbitCameraView(const OrbitCamera& camera) noexcept
 
 cyber::math::Mat4 OrbitCameraProjection(const OrbitCamera& camera, f32 aspect) noexcept
 {
-    if (!std::isfinite(aspect) || aspect <= 0.0f || !std::isfinite(camera.fovYRadians) ||
+    if (!math::IsFinite(aspect) || aspect <= 0.0f || !math::IsFinite(camera.fovYRadians) ||
         camera.fovYRadians <= 0.0f || camera.fovYRadians >= cyber::math::kPi ||
-        !std::isfinite(camera.nearPlane) || !std::isfinite(camera.farPlane) ||
+        !math::IsFinite(camera.nearPlane) || !math::IsFinite(camera.farPlane) ||
         camera.nearPlane <= 0.0f || camera.farPlane <= camera.nearPlane)
     {
         return cyber::math::Mat4::Identity();
@@ -147,32 +147,32 @@ void UpdateOrbitCamera(OrbitCamera& camera, const OrbitCameraInput& input,
     camera.pitchRadians =
         cyber::math::Clamp(camera.pitchRadians + input.pitchDelta, -kMaxPitch, kMaxPitch);
 
-    if (std::isfinite(input.zoomDelta))
+    if (math::IsFinite(input.zoomDelta))
     {
         camera.distance *= std::exp(-input.zoomDelta);
     }
-    if (!std::isfinite(camera.distance))
+    if (!math::IsFinite(camera.distance))
     {
         camera.distance = camera.maxDistance;
     }
 
     f32 minDistance = camera.minDistance;
-    if (!std::isfinite(minDistance) || minDistance < 0.0f)
+    if (!math::IsFinite(minDistance) || minDistance < 0.0f)
     {
         minDistance = 0.0f;
     }
     f32 maxDistance = camera.maxDistance;
-    if (!std::isfinite(maxDistance) || maxDistance < minDistance)
+    if (!math::IsFinite(maxDistance) || maxDistance < minDistance)
     {
         maxDistance = minDistance;
     }
     camera.distance = cyber::math::Clamp(camera.distance, minDistance, maxDistance);
 
-    if (std::isfinite(input.panRight) && input.panRight != 0.0f)
+    if (math::IsFinite(input.panRight) && input.panRight != 0.0f)
     {
         camera.target += HorizontalRight(camera.yawRadians) * input.panRight;
     }
-    if (std::isfinite(input.panUp) && input.panUp != 0.0f)
+    if (math::IsFinite(input.panUp) && input.panUp != 0.0f)
     {
         camera.target += kWorldUp * input.panUp;
     }

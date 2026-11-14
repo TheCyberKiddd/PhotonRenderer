@@ -25,8 +25,8 @@ BuildClusterLightBounds(cyber::memory::Span<const PbrPointLight> pointLights,
     {
         const PbrPointLight& light = pointLights[index];
         const math::Vec3 viewPosition = viewFromWorld.TransformPoint(light.position);
-        if (!std::isfinite(viewPosition.x) || !std::isfinite(viewPosition.y) ||
-            !std::isfinite(viewPosition.z) || !std::isfinite(light.range) || light.range <= 0.0f)
+        if (!math::IsFinite(viewPosition.x) || !math::IsFinite(viewPosition.y) ||
+            !math::IsFinite(viewPosition.z) || !math::IsFinite(light.range) || light.range <= 0.0f)
         {
             return core::Status<Error>::Err(
                 Error{ErrorCode::InvalidArgument, "clustered PBR: invalid point-light bound"});

@@ -28,7 +28,7 @@ usize AlignUp(usize value, usize alignment) noexcept
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 f32 Component(const math::Vec3& value, u32 axis) noexcept
@@ -294,7 +294,7 @@ math::Vec3 SafeInverse(const math::Vec3& direction) noexcept
 bool ValidRay(const RayDesc& ray) noexcept
 {
     return IsFinite(ray.origin) && IsFinite(ray.direction) &&
-           math::LengthSquared(ray.direction) > 0.0f && std::isfinite(ray.tMin) &&
+           math::LengthSquared(ray.direction) > 0.0f && math::IsFinite(ray.tMin) &&
            !std::isnan(ray.tMax) && ray.tMin >= 0.0f && ray.tMin <= ray.tMax;
 }
 
@@ -312,8 +312,8 @@ bool IsFinite(const math::Mat4& matrix) noexcept
     for (usize column = 0; column < 4; ++column)
     {
         const math::Vec4& value = matrix[column];
-        if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z) ||
-            !std::isfinite(value.w))
+        if (!math::IsFinite(value.x) || !math::IsFinite(value.y) || !math::IsFinite(value.z) ||
+            !math::IsFinite(value.w))
         {
             return false;
         }
@@ -1205,7 +1205,7 @@ bool TraceVisibility(const TopLevelAccelerationStructure& scene, const math::Vec
     {
         return true;
     }
-    const f32 bias = std::clamp(std::isfinite(biasFraction) ? biasFraction : 0.0f, 0.0f, 0.49f);
+    const f32 bias = std::clamp(math::IsFinite(biasFraction) ? biasFraction : 0.0f, 0.0f, 0.49f);
     RayDesc ray{};
     ray.origin = from;
     ray.direction = direction;
@@ -1218,7 +1218,7 @@ math::Vec3 OffsetRayOrigin(const math::Vec3& position, const math::Vec3& normal,
 {
     const f32 magnitude =
         std::max(std::fabs(position.x), std::max(std::fabs(position.y), std::fabs(position.z)));
-    const f32 offset = (1.0e-4f + magnitude * 1.0e-5f) * (std::isfinite(scale) ? scale : 1.0f);
+    const f32 offset = (1.0e-4f + magnitude * 1.0e-5f) * (math::IsFinite(scale) ? scale : 1.0f);
     return position + normal * offset;
 }
 

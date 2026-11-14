@@ -19,7 +19,7 @@ constexpr f32 kInversePi = 1.0f / kPi;
 
 f32 Saturate(f32 value) noexcept
 {
-    if (!std::isfinite(value))
+    if (!math::IsFinite(value))
     {
         return 0.0f;
     }
@@ -28,19 +28,19 @@ f32 Saturate(f32 value) noexcept
 
 f32 FiniteOrZero(f32 value) noexcept
 {
-    return std::isfinite(value) ? value : 0.0f;
+    return math::IsFinite(value) ? value : 0.0f;
 }
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 math::Vec3 FiniteNonNegative(const math::Vec3& value) noexcept
 {
-    return math::Vec3{std::isfinite(value.x) && value.x > 0.0f ? value.x : 0.0f,
-                      std::isfinite(value.y) && value.y > 0.0f ? value.y : 0.0f,
-                      std::isfinite(value.z) && value.z > 0.0f ? value.z : 0.0f};
+    return math::Vec3{math::IsFinite(value.x) && value.x > 0.0f ? value.x : 0.0f,
+                      math::IsFinite(value.y) && value.y > 0.0f ? value.y : 0.0f,
+                      math::IsFinite(value.z) && value.z > 0.0f ? value.z : 0.0f};
 }
 
 math::Vec3 Multiply(const math::Vec3& lhs, const math::Vec3& rhs) noexcept
@@ -394,7 +394,7 @@ void Cubemap::GenerateMips() noexcept
 
 math::Vec3 CubeDirectionFromFaceUv(u32 face, f32 u, f32 v) noexcept
 {
-    if (!std::isfinite(u) || !std::isfinite(v))
+    if (!math::IsFinite(u) || !math::IsFinite(v))
     {
         u = 0.5f;
         v = 0.5f;
@@ -495,7 +495,7 @@ void CubeFaceUvFromDirection(const math::Vec3& direction, u32& face, f32& u, f32
 
 f32 CubeTexelSolidAngle(i32 faceSize, f32 u, f32 v) noexcept
 {
-    if (faceSize <= 0 || !std::isfinite(u) || !std::isfinite(v))
+    if (faceSize <= 0 || !math::IsFinite(u) || !math::IsFinite(v))
     {
         return 0.0f;
     }
@@ -606,7 +606,7 @@ math::Color SampleCubemapLevel(const Cubemap& cubemap, const math::Vec3& directi
         return math::Color{0.0f, 0.0f, 0.0f, 0.0f};
     }
     const f32 maximumLevel = static_cast<f32>(cubemap.MipLevels() - 1u);
-    const f32 clamped = std::isfinite(level) ? std::clamp(level, 0.0f, maximumLevel) : 0.0f;
+    const f32 clamped = math::IsFinite(level) ? std::clamp(level, 0.0f, maximumLevel) : 0.0f;
     const u32 lower = static_cast<u32>(std::floor(clamped));
     const f32 fraction = clamped - static_cast<f32>(lower);
     const math::Color low = SampleCubemapFace(cubemap, direction, lower);
@@ -1471,7 +1471,7 @@ IblTerms EvaluateTerms(const EnvironmentLighting& environment, const IblSurface&
 {
     IblTerms terms{};
     const f32 intensity = radianceOverride != nullptr ? 1.0f
-                                                      : (std::isfinite(environment.intensity) &&
+                                                      : (math::IsFinite(environment.intensity) &&
                                                                  environment.intensity > 0.0f
                                                              ? environment.intensity
                                                              : 0.0f);

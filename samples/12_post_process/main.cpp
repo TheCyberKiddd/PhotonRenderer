@@ -166,8 +166,8 @@ Color VelocityPixel(const Varyings& varyings, const void* userData) noexcept
     const f32 y1 = center.y + halfExtents.y;
     const f32 z0 = center.z - halfExtents.z;
     const f32 z1 = center.z + halfExtents.z;
-    return PushQuad(mesh, Vec3{x0, y0, z1}, Vec3{x1, y0, z1}, Vec3{x1, y1, z1},
-                    Vec3{x0, y1, z1}, color) &&
+    return PushQuad(mesh, Vec3{x0, y0, z1}, Vec3{x1, y0, z1}, Vec3{x1, y1, z1}, Vec3{x0, y1, z1},
+                    color) &&
            PushQuad(mesh, Vec3{x1, y0, z0}, Vec3{x0, y0, z0}, Vec3{x0, y1, z0}, Vec3{x1, y1, z0},
                     color) &&
            PushQuad(mesh, Vec3{x0, y0, z0}, Vec3{x0, y0, z1}, Vec3{x0, y1, z1}, Vec3{x0, y1, z0},
@@ -286,8 +286,8 @@ Color VelocityPixel(const Varyings& varyings, const void* userData) noexcept
 
 [[nodiscard]] bool RenderAuxiliary(Span<const VertexInput> vertices, i32 frame,
                                    const Vec2& jitterPixels, PixelShaderFn pixelShader,
-                                   const Color& clearColor, Framebuffer& target,
-                                   DepthBuffer& depth, HeapAllocator& allocator)
+                                   const Color& clearColor, Framebuffer& target, DepthBuffer& depth,
+                                   HeapAllocator& allocator)
 {
     AuxiliaryUniforms uniforms{};
     uniforms.transform.modelViewProjection = ViewProjection(frame, jitterPixels);
@@ -494,7 +494,8 @@ int main(int argc, char** argv)
                     static_cast<double>(timing.nanoseconds) * 1.0e-6,
                     timing.executed ? "on" : "off");
     }
-    std::printf("  %-20s %10.3f\n", "total", static_cast<double>(timings.totalNanoseconds) * 1.0e-6);
+    std::printf("  %-20s %10.3f\n", "total",
+                static_cast<double>(timings.totalNanoseconds) * 1.0e-6);
     std::printf("  metered %.4f, exposure %+.3f EV\n\n",
                 static_cast<double>(timings.averageLuminance),
                 static_cast<double>(timings.exposureEv));
@@ -657,14 +658,14 @@ int main(int argc, char** argv)
         const char* name;
         const Framebuffer* image;
     };
-    const Variant variants[] = {{"aa_none.ppm", &unfiltered},
-                                {"aa_fxaa.ppm", &fxaa},
-                                {"aa_temporal.ppm", &temporal}};
+    const Variant variants[] = {
+        {"aa_none.ppm", &unfiltered}, {"aa_fxaa.ppm", &fxaa}, {"aa_temporal.ppm", &temporal}};
     for (const Variant& variant : variants)
     {
         PostProcessInputs displayInputs{};
         displayInputs.color = variant.image;
-        if (!stack.Execute(displayInputs, destination, display, view, 1.0f / 60.0f, nullptr, nullptr)
+        if (!stack
+                 .Execute(displayInputs, destination, display, view, 1.0f / 60.0f, nullptr, nullptr)
                  .IsOk())
         {
             std::fprintf(stderr, "failed to encode %s\n", variant.name);

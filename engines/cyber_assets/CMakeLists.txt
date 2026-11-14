@@ -5,6 +5,7 @@ cyber_add_module(
         src/asset.cpp
         src/asset_database.cpp
         src/asset_library.cpp
+        src/bc_codec.cpp
         src/cooked.cpp
         src/deflate.cpp
         src/dds.cpp
@@ -21,6 +22,7 @@ cyber_add_module(
         include/cyber/assets/asset.h
         include/cyber/assets/asset_database.h
         include/cyber/assets/asset_library.h
+        include/cyber/assets/bc_codec.h
         include/cyber/assets/cooked.h
         include/cyber/assets/gltf.h
         include/cyber/assets/image.h
@@ -87,6 +89,14 @@ if(CYBER_BUILD_TESTS)
     target_compile_definitions(cyber_test_assets_cooked PRIVATE
         CYBER_ASSET_FIXTURES="${CYBER_ASSET_FIXTURES}")
     set_tests_properties(assets_cooked PROPERTIES TIMEOUT 20)
+
+    cyber_add_test(
+        NAME assets_bc_codec
+        SOURCES
+            tests/bc_codec_test.cpp
+        DEPENDS assets
+    )
+    set_tests_properties(assets_bc_codec PROPERTIES TIMEOUT 120)
 
     cyber_add_test(
         NAME assets_obj

@@ -217,6 +217,29 @@ public:
     // `valid` false.
     [[nodiscard]] TextureInfo TextureInfoOf(TextureHandle texture) const noexcept;
 
+    // Reserved textures (Phase 33). Every call is `ErrorCode::Unsupported`
+    // without `Feature::ReservedTextures`.
+    //
+    // Creates a heap of 64 KiB tiles that reserved textures map onto.
+    [[nodiscard]] Result<TileHeapHandle, Error> CreateTileHeap(const TileHeapDesc& desc) noexcept;
+    // Destroys a heap. The caller unmaps tiles first; any still mapped read as
+    // zero afterwards.
+    [[nodiscard]] Status<Error> DestroyTileHeap(TileHeapHandle heap) noexcept;
+    // The driver's tiling of a reserved texture: standard mips as tile grids,
+    // the small mips packed. `valid` is false for a stale or non-reserved one.
+    [[nodiscard]] TextureTiling TextureTilingOf(TextureHandle texture) const noexcept;
+    // Maps (or, with an invalid heap, unmaps) tiles of reserved textures. The
+    // update is ordered on `queue` after the work already submitted to it and
+    // before the work submitted after it, so a draw on the same queue never
+    // sees a tile change under it. The whole batch is validated first: a stale
+    // texture or heap, a tile outside the texture's tiling, or a heap tile
+    // outside the heap is `ErrorCode::InvalidArgument` and nothing is applied.
+    [[nodiscard]] Status<Error>
+    UpdateTileMappings(QueueKind queue, memory::Span<const TileMapping> mappings) noexcept;
+    // Where one tile points now (the `heap` and `heapTile` of `tile` are
+    // ignored).
+    [[nodiscard]] TileMappingInfo TileMappingOf(const TileMapping& tile) const noexcept;
+
     // Creates a view over a live texture. Returns `ErrorCode::InvalidArgument`
     // for a stale texture, a format that is not view-compatible, a shape the
     // texture cannot expose, or a range outside the texture.

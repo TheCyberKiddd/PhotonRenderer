@@ -288,12 +288,10 @@ public:
     //
     // Returns InvalidArgument for a mismatched buffer, a historyWeight outside
     // [0, 1), or a velocity buffer of the wrong size.
-    [[nodiscard]] core::Status<core::Error> Resolve(const Framebuffer& color,
-                                                    const Framebuffer* velocity,
-                                                    Framebuffer& destination,
-                                                    const TemporalAaSettings& settings,
-                                                    jobs::JobSystem* jobSystem,
-                                                    TemporalAaStats* stats) noexcept;
+    [[nodiscard]] core::Status<core::Error>
+    Resolve(const Framebuffer& color, const Framebuffer* velocity, Framebuffer& destination,
+            const TemporalAaSettings& settings, jobs::JobSystem* jobSystem,
+            TemporalAaStats* stats) noexcept;
 
     // The same resolve, with the frame's depth available for the disocclusion
     // test. inputs.color is required and must not alias destination.

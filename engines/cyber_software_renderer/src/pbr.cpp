@@ -17,17 +17,17 @@ constexpr f32 kInversePi = 1.0f / cyber::math::kPi;
 
 f32 Saturate(f32 value) noexcept
 {
-    return std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
+    return math::IsFinite(value) ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
 }
 
 f32 FiniteNonNegative(f32 value) noexcept
 {
-    return std::isfinite(value) && value > 0.0f ? value : 0.0f;
+    return math::IsFinite(value) && value > 0.0f ? value : 0.0f;
 }
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 math::Vec3 FiniteNonNegative(const math::Vec3& value) noexcept
@@ -38,7 +38,7 @@ math::Vec3 FiniteNonNegative(const math::Vec3& value) noexcept
 
 f32 SmoothRangeFade(f32 distance, f32 range) noexcept
 {
-    if (!std::isfinite(distance) || !std::isfinite(range) || distance < 0.0f || range <= 0.0f ||
+    if (!math::IsFinite(distance) || !math::IsFinite(range) || distance < 0.0f || range <= 0.0f ||
         distance >= range)
     {
         return 0.0f;
@@ -57,7 +57,10 @@ f32 SchlickGeometry(f32 nDotX, f32 alpha) noexcept
 
 math::Vec3 FresnelSchlick(f32 vDotH, const math::Vec3& f0) noexcept
 {
-    const f32 factor = std::pow(1.0f - Saturate(vDotH), 5.0f);
+    // (1 - v.h)^5 by multiplication: std::pow is a library call per light per pixel.
+    const f32 base = 1.0f - Saturate(vDotH);
+    const f32 base2 = base * base;
+    const f32 factor = base2 * base2 * base;
     return f0 + (math::Vec3::One() - f0) * factor;
 }
 
@@ -83,8 +86,8 @@ math::Vec3 EvaluateDirect(const math::Vec3& normal, const math::Vec3& viewDirect
 
 f32 HenyeyGreenstein(f32 cosine, f32 anisotropy) noexcept
 {
-    const f32 g = std::clamp(std::isfinite(anisotropy) ? anisotropy : 0.0f, -0.9f, 0.9f);
-    const f32 clampedCosine = std::clamp(std::isfinite(cosine) ? cosine : 0.0f, -1.0f, 1.0f);
+    const f32 g = std::clamp(math::IsFinite(anisotropy) ? anisotropy : 0.0f, -0.9f, 0.9f);
+    const f32 clampedCosine = std::clamp(math::IsFinite(cosine) ? cosine : 0.0f, -1.0f, 1.0f);
     const f32 denominator = 1.0f + g * g - 2.0f * g * clampedCosine;
     return (1.0f - g * g) /
            (4.0f * cyber::math::kPi * std::pow(std::max(denominator, 1.0e-4f), 1.5f));
@@ -122,7 +125,7 @@ f32 EvaluateFogShadow(const ShadowMapView& source, const math::Vec3& position,
 
 f32 SpotConeAttenuation(const PbrSpotLight& light, const math::Vec3& sampleToLight) noexcept
 {
-    if (!std::isfinite(light.innerConeRadians) || !std::isfinite(light.outerConeRadians))
+    if (!math::IsFinite(light.innerConeRadians) || !math::IsFinite(light.outerConeRadians))
     {
         return 0.0f;
     }
@@ -130,8 +133,7 @@ f32 SpotConeAttenuation(const PbrSpotLight& light, const math::Vec3& sampleToLig
         std::cos(std::clamp(light.innerConeRadians, 0.0f, cyber::math::kPi * 0.5f));
     const f32 outerCos =
         std::cos(std::clamp(light.outerConeRadians, 0.0f, cyber::math::kPi * 0.5f));
-    const f32 coneCos =
-        cyber::math::Dot(cyber::math::Normalize(light.direction), -sampleToLight);
+    const f32 coneCos = cyber::math::Dot(cyber::math::Normalize(light.direction), -sampleToLight);
     if (innerCos > outerCos)
     {
         const f32 amount = Saturate((coneCos - outerCos) / (innerCos - outerCos));
@@ -147,19 +149,18 @@ math::Vec3 EvaluateFogSource(const PbrLightingData& data, const PbrHeightFog& fo
                             Saturate(fog.scatteringAlbedo.z)};
     const f32 intensity = std::min(FiniteNonNegative(fog.scatteringIntensity), 1.0e4f);
     const math::Vec3 toEye = -rayDirection;
-    math::Vec3 source =
-        Multiply(albedo, FiniteNonNegative(data.ambientIrradiance) * kInversePi) *
-        (intensity / (4.0f * cyber::math::kPi));
+    math::Vec3 source = Multiply(albedo, FiniteNonNegative(data.ambientIrradiance) * kInversePi) *
+                        (intensity / (4.0f * cyber::math::kPi));
 
     for (u32 index = 0; index < data.directionalCount && index < kMaxPbrDirectionalLights; ++index)
     {
         const PbrDirectionalLight& light = data.directional[index];
         const math::Vec3 toLight = cyber::math::Normalize(-light.direction);
-        const f32 phase = HenyeyGreenstein(
-            cyber::math::Dot(light.direction, toEye), fog.anisotropy);
+        const f32 phase =
+            HenyeyGreenstein(cyber::math::Dot(light.direction, toEye), fog.anisotropy);
         const f32 visibility = EvaluateFogShadow(light, data, position, toLight);
-        source += Multiply(albedo, FiniteNonNegative(light.radiance)) *
-                  (phase * intensity * visibility);
+        source +=
+            Multiply(albedo, FiniteNonNegative(light.radiance)) * (phase * intensity * visibility);
     }
 
     const cyber::core::usize pointIterations =
@@ -178,12 +179,11 @@ math::Vec3 EvaluateFogSource(const PbrLightingData& data, const PbrHeightFog& fo
                 continue;
             }
         }
-        const PbrPointLight& light = data.pointLightSpan.Empty()
-                                         ? data.points[lightIndex]
-                                         : data.pointLightSpan[lightIndex];
+        const PbrPointLight& light =
+            data.pointLightSpan.Empty() ? data.points[lightIndex] : data.pointLightSpan[lightIndex];
         const math::Vec3 offset = light.position - position;
         const f32 distanceSquared = cyber::math::LengthSquared(offset);
-        if (!(distanceSquared > 1.0e-8f) || !std::isfinite(distanceSquared))
+        if (!(distanceSquared > 1.0e-8f) || !math::IsFinite(distanceSquared))
         {
             continue;
         }
@@ -194,13 +194,11 @@ math::Vec3 EvaluateFogSource(const PbrLightingData& data, const PbrHeightFog& fo
             continue;
         }
         const math::Vec3 toLight = offset / distance;
-        const f32 phase =
-            HenyeyGreenstein(cyber::math::Dot(toLight, rayDirection), fog.anisotropy);
-        const f32 visibility = EvaluatePointShadowVisibility(
-            light.shadow, -offset, position, toLight, toLight);
+        const f32 phase = HenyeyGreenstein(cyber::math::Dot(toLight, rayDirection), fog.anisotropy);
+        const f32 visibility =
+            EvaluatePointShadowVisibility(light.shadow, -offset, position, toLight, toLight);
         source += Multiply(albedo, FiniteNonNegative(light.intensity)) *
-                  (fade * visibility * phase * intensity /
-                   std::max(distanceSquared, 1.0e-4f));
+                  (fade * visibility * phase * intensity / std::max(distanceSquared, 1.0e-4f));
     }
 
     for (u32 index = 0; index < data.spotCount && index < kMaxPbrSpotLights; ++index)
@@ -208,7 +206,7 @@ math::Vec3 EvaluateFogSource(const PbrLightingData& data, const PbrHeightFog& fo
         const PbrSpotLight& light = data.spots[index];
         const math::Vec3 offset = light.position - position;
         const f32 distanceSquared = cyber::math::LengthSquared(offset);
-        if (!(distanceSquared > 1.0e-8f) || !std::isfinite(distanceSquared))
+        if (!(distanceSquared > 1.0e-8f) || !math::IsFinite(distanceSquared))
         {
             continue;
         }
@@ -221,8 +219,7 @@ math::Vec3 EvaluateFogSource(const PbrLightingData& data, const PbrHeightFog& fo
             continue;
         }
         const math::Vec3 toLight = offset / distance;
-        const f32 phase =
-            HenyeyGreenstein(cyber::math::Dot(toLight, rayDirection), fog.anisotropy);
+        const f32 phase = HenyeyGreenstein(cyber::math::Dot(toLight, rayDirection), fog.anisotropy);
         const f32 visibility = EvaluateFogShadow(light.shadow, position, toLight);
         source += Multiply(albedo, FiniteNonNegative(light.intensity)) *
                   (attenuation * visibility * phase * intensity);
@@ -234,18 +231,17 @@ void ApplyHeightFog(const PbrLightingData& data, const Varyings& varyings,
                     math::Vec3& surfaceRadiance) noexcept
 {
     const PbrHeightFog& fog = data.fog;
-    if (!std::isfinite(fog.density) || fog.density <= 0.0f ||
-        !std::isfinite(fog.heightFalloff) || !std::isfinite(fog.baseHeight) ||
-        !std::isfinite(fog.startDistance) || !std::isfinite(fog.maxDistance) ||
-        fog.maxDistance <= fog.startDistance || !IsFinite(varyings.worldPosition) ||
-        !IsFinite(data.eyePosition))
+    if (!math::IsFinite(fog.density) || fog.density <= 0.0f || !math::IsFinite(fog.heightFalloff) ||
+        !math::IsFinite(fog.baseHeight) || !math::IsFinite(fog.startDistance) ||
+        !math::IsFinite(fog.maxDistance) || fog.maxDistance <= fog.startDistance ||
+        !IsFinite(varyings.worldPosition) || !IsFinite(data.eyePosition))
     {
         return;
     }
 
     const math::Vec3 ray = varyings.worldPosition - data.eyePosition;
     const f32 distance = cyber::math::Length(ray);
-    if (!std::isfinite(distance) || distance <= fog.startDistance)
+    if (!math::IsFinite(distance) || distance <= fog.startDistance)
     {
         return;
     }
@@ -256,19 +252,17 @@ void ApplyHeightFog(const PbrLightingData& data, const Varyings& varyings,
     }
 
     const math::Vec3 rayDirection = ray / distance;
-    const f32 stepLength =
-        (endDistance - fog.startDistance) /
-        static_cast<f32>(std::clamp(fog.integrationSteps, 1U, 32U));
+    const f32 stepLength = (endDistance - fog.startDistance) /
+                           static_cast<f32>(std::clamp(fog.integrationSteps, 1U, 32U));
     const u32 steps = std::clamp(fog.integrationSteps, 1U, 32U);
     f32 transmittance = 1.0f;
     math::Vec3 inScattering = math::Vec3::Zero();
     for (u32 step = 0; step < steps; ++step)
     {
-        const f32 sampleDistance =
-            fog.startDistance + (static_cast<f32>(step) + 0.5f) * stepLength;
+        const f32 sampleDistance = fog.startDistance + (static_cast<f32>(step) + 0.5f) * stepLength;
         const math::Vec3 samplePosition = data.eyePosition + rayDirection * sampleDistance;
-        const f32 exponent = std::clamp(
-            -fog.heightFalloff * (samplePosition.y - fog.baseHeight), -80.0f, 80.0f);
+        const f32 exponent =
+            std::clamp(-fog.heightFalloff * (samplePosition.y - fog.baseHeight), -80.0f, 80.0f);
         const f32 density = std::min(fog.density * std::exp(exponent), 1.0e6f);
         const f32 segmentOpacity = 1.0f - std::exp(-density * stepLength);
         if (segmentOpacity > 0.0f)
@@ -285,7 +279,7 @@ void ApplyHeightFog(const PbrLightingData& data, const Varyings& varyings,
 f32 ToneMapChannel(f32 value, f32 exposure) noexcept
 {
     const f32 x = FiniteNonNegative(value) * exposure;
-    if (!std::isfinite(x) || x >= 1.0e10f)
+    if (!math::IsFinite(x) || x >= 1.0e10f)
     {
         return 1.0f;
     }
@@ -309,7 +303,7 @@ math::Color EvaluateGgxBrdf(const math::Vec3& normal, const math::Vec3& viewDire
         return math::Color{0.0f, 0.0f, 0.0f, 1.0f};
     }
 
-    if (!std::isfinite(material.metallic) || !std::isfinite(material.roughness))
+    if (!math::IsFinite(material.metallic) || !math::IsFinite(material.roughness))
     {
         return math::Color{0.0f, 0.0f, 0.0f, 1.0f};
     }
@@ -357,7 +351,7 @@ math::Vec3 ApplyTangentSpaceNormal(const math::Vec3& normal, const math::Vec3& t
         t = cyber::math::Normalize(cyber::math::Cross(axis, n));
     }
     const math::Vec3 b = cyber::math::Cross(n, t) * (tangentSign < 0.0f ? -1.0f : 1.0f);
-    const f32 scale = std::isfinite(normalScale) ? normalScale : 1.0f;
+    const f32 scale = math::IsFinite(normalScale) ? normalScale : 1.0f;
     const math::Vec3 tangentNormal{(normalSample.r * 2.0f - 1.0f) * scale,
                                    (normalSample.g * 2.0f - 1.0f) * scale,
                                    normalSample.b * 2.0f - 1.0f};
@@ -373,7 +367,7 @@ math::Color PbrPixelShader(const Varyings& varyings, const void* userData) noexc
     {
         return varyings.color;
     }
-    if (!std::isfinite(data->material.metallic) || !std::isfinite(data->material.roughness))
+    if (!math::IsFinite(data->material.metallic) || !math::IsFinite(data->material.roughness))
     {
         return math::Color{0.0f, 0.0f, 0.0f, 1.0f};
     }
@@ -392,7 +386,7 @@ math::Color PbrPixelShader(const Varyings& varyings, const void* userData) noexc
     baseColor.g *= varyings.color.g;
     baseColor.b *= varyings.color.b;
     baseColor.a *= varyings.color.a;
-    if (!std::isfinite(baseColor.a))
+    if (!math::IsFinite(baseColor.a))
     {
         baseColor.a = 1.0f;
     }
@@ -453,12 +447,12 @@ math::Color PbrPixelShader(const Varyings& varyings, const void* userData) noexc
         iblSurface.ambientOcclusion = Saturate(data->ambientOcclusion);
         if (hasProbes)
         {
-            output += data->screenSpaceReflections != nullptr
-                          ? ResolveReflections(*data->screenSpaceReflections,
-                                               data->reflectionProbes, varyings.worldPosition,
-                                               iblSurface)
-                          : EvaluateReflectionProbes(data->reflectionProbes,
-                                                     varyings.worldPosition, iblSurface);
+            output +=
+                data->screenSpaceReflections != nullptr
+                    ? ResolveReflections(*data->screenSpaceReflections, data->reflectionProbes,
+                                         varyings.worldPosition, iblSurface)
+                    : EvaluateReflectionProbes(data->reflectionProbes, varyings.worldPosition,
+                                               iblSurface);
         }
         else
         {
@@ -515,7 +509,7 @@ math::Color PbrPixelShader(const Varyings& varyings, const void* userData) noexc
                                          : data->pointLightSpan[lightIndex];
         const math::Vec3 offset = light.position - varyings.worldPosition;
         const f32 distanceSquared = cyber::math::LengthSquared(offset);
-        if (!(distanceSquared > 1.0e-8f) || !std::isfinite(distanceSquared))
+        if (!(distanceSquared > 1.0e-8f) || !math::IsFinite(distanceSquared))
         {
             continue;
         }
@@ -538,8 +532,8 @@ math::Color PbrPixelShader(const Varyings& varyings, const void* userData) noexc
         const PbrSpotLight& light = data->spots[index];
         const math::Vec3 offset = light.position - varyings.worldPosition;
         const f32 distanceSquared = cyber::math::LengthSquared(offset);
-        if (!(distanceSquared > 1.0e-8f) || !std::isfinite(distanceSquared) ||
-            !std::isfinite(light.innerConeRadians) || !std::isfinite(light.outerConeRadians))
+        if (!(distanceSquared > 1.0e-8f) || !math::IsFinite(distanceSquared) ||
+            !math::IsFinite(light.innerConeRadians) || !math::IsFinite(light.outerConeRadians))
         {
             continue;
         }
@@ -580,7 +574,7 @@ math::Color PbrPixelShader(const Varyings& varyings, const void* userData) noexc
 
 math::Color ToneMapAces(const math::Color& hdrColor, f32 exposureEv) noexcept
 {
-    const f32 stops = std::isfinite(exposureEv) ? std::clamp(exposureEv, -32.0f, 32.0f) : 0.0f;
+    const f32 stops = math::IsFinite(exposureEv) ? std::clamp(exposureEv, -32.0f, 32.0f) : 0.0f;
     const f32 exposure = std::exp2(stops);
     return math::Color{ToneMapChannel(hdrColor.r, exposure), ToneMapChannel(hdrColor.g, exposure),
                        ToneMapChannel(hdrColor.b, exposure), hdrColor.a};

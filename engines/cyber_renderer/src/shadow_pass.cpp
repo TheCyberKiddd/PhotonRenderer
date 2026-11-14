@@ -70,11 +70,10 @@ Status<Error> RecordShadowSamplingPass(RenderPassContext& context, void* userDat
 }  // namespace
 
 Status<Error> CreateShadowMapResources(cyber::rhi::Device& device, cyber::core::u32 width,
-                                       cyber::core::u32 height,
-                                       ShadowMapResources& output) noexcept
+                                       cyber::core::u32 height, ShadowMapResources& output) noexcept
 {
-    if (!device.IsValid() || width == 0 || height == 0 ||
-        output.depthTexture.IsValid() || output.depthView.IsValid() || output.sampledView.IsValid())
+    if (!device.IsValid() || width == 0 || height == 0 || output.depthTexture.IsValid() ||
+        output.depthView.IsValid() || output.sampledView.IsValid())
     {
         return Status<Error>::Err(Error{cyber::core::ErrorCode::InvalidArgument,
                                         "invalid shadow map resource description"});
@@ -82,8 +81,7 @@ Status<Error> CreateShadowMapResources(cyber::rhi::Device& device, cyber::core::
 
     cyber::rhi::TextureDesc textureDesc{};
     textureDesc.format = cyber::rhi::Format::D32Float;
-    textureDesc.usage = cyber::rhi::TextureUsage::DepthStencil |
-                        cyber::rhi::TextureUsage::Sampled |
+    textureDesc.usage = cyber::rhi::TextureUsage::DepthStencil | cyber::rhi::TextureUsage::Sampled |
                         cyber::rhi::TextureUsage::CopySource;
     textureDesc.width = width;
     textureDesc.height = height;
@@ -129,9 +127,8 @@ Status<Error> CreateShadowMapResources(cyber::rhi::Device& device, cyber::core::
     return Status<Error>::Ok();
 }
 
-Result<GraphResourceHandle, Error>
-ImportShadowMap(RenderGraph& graph, const char* name,
-                const ShadowMapResources& resources) noexcept
+Result<GraphResourceHandle, Error> ImportShadowMap(RenderGraph& graph, const char* name,
+                                                   const ShadowMapResources& resources) noexcept
 {
     if (!resources.depthTexture.IsValid() || !resources.depthView.IsValid() ||
         resources.width == 0 || resources.height == 0)
@@ -195,8 +192,7 @@ Status<Error> AddShadowDepthPass(RenderGraph& graph, ShadowDepthPassDesc& desc) 
     return graph.AddPass(pass);
 }
 
-Status<Error> AddShadowSamplingPass(RenderGraph& graph,
-                                    ShadowSamplingPassDesc& desc) noexcept
+Status<Error> AddShadowSamplingPass(RenderGraph& graph, ShadowSamplingPassDesc& desc) noexcept
 {
     if (desc.name == nullptr || desc.name[0] == '\0' || desc.record == nullptr ||
         desc.shadowResources.Empty() || desc.shadowResources.Data() == nullptr)

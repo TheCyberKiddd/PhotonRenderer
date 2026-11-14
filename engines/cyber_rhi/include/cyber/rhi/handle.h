@@ -61,6 +61,9 @@ struct FenceTag
 struct TimestampQueryHeapTag
 {
 };
+struct TileHeapTag
+{
+};
 struct SwapChainTag
 {
 };
@@ -100,6 +103,9 @@ using TimestampQueryHeapHandle = memory::Handle<TimestampQueryHeapTag>;
 // A ring of presentable images owned by the device and backed by a surface the
 // caller owns (Phase 13).
 using SwapChainHandle = memory::Handle<SwapChainTag>;
+// A block of device memory carved into 64 KiB tiles that reserved textures
+// map onto (Phase 33).
+using TileHeapHandle = memory::Handle<TileHeapTag>;
 
 // Packs a handle into one 64-bit value with the index in the high half and the
 // generation in the low half. The form is for logging, hashing, and the future C

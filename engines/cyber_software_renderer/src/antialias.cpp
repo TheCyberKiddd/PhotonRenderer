@@ -263,7 +263,7 @@ void FilterDestinationRow(void* userData, u32 index) noexcept
 
 f32 EvaluateResolveFilter(ResolveFilter filter, f32 offsetPixels) noexcept
 {
-    if (!std::isfinite(offsetPixels))
+    if (!math::IsFinite(offsetPixels))
     {
         return 0.0f;
     }

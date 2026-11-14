@@ -223,19 +223,16 @@ struct ShadowRenderDesc
 // the depth store only. Alpha-tested occluders are therefore not supported.
 [[nodiscard]] core::Status<core::Error>
 RenderShadowMap(const ShadowRenderDesc& desc, cyber::memory::Span<const VertexInput> vertices,
-                DepthBuffer& depth, jobs::JobSystem* jobSystem,
-                cyber::memory::Allocator& allocator, PipelineStats* stats = nullptr) noexcept;
+                DepthBuffer& depth, jobs::JobSystem* jobSystem, cyber::memory::Allocator& allocator,
+                PipelineStats* stats = nullptr) noexcept;
 
 // Renders every configured directional cascade into caller-owned, equally sized
 // depth maps. On success each cascade borrows its corresponding depth map. The
 // depth-map array must outlive all lighting that samples the returned set.
-[[nodiscard]] core::Status<core::Error>
-RenderDirectionalShadowMaps(DirectionalShadowCascadeSet& cascades,
-                            cyber::memory::Span<const VertexInput> vertices,
-                            cyber::memory::Span<DepthBuffer> depthMaps,
-                            cyber::memory::Allocator& allocator,
-                            jobs::JobSystem* jobSystem = nullptr,
-                            CullMode cullMode = CullMode::Back, bool useJobs = true,
-                            cyber::memory::Span<PipelineStats> stats = {}) noexcept;
+[[nodiscard]] core::Status<core::Error> RenderDirectionalShadowMaps(
+    DirectionalShadowCascadeSet& cascades, cyber::memory::Span<const VertexInput> vertices,
+    cyber::memory::Span<DepthBuffer> depthMaps, cyber::memory::Allocator& allocator,
+    jobs::JobSystem* jobSystem = nullptr, CullMode cullMode = CullMode::Back, bool useJobs = true,
+    cyber::memory::Span<PipelineStats> stats = {}) noexcept;
 
 }  // namespace cyber::software

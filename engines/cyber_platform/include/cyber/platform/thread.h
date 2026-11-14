@@ -14,6 +14,16 @@ namespace cyber::platform
 
 using ThreadFunction = void (*)(void* userData) noexcept;
 
+// Scheduling class for background work. Low is for threads that must not take
+// cores from the frame (streaming IO, asset decompression); High for threads
+// the frame waits on.
+enum class ThreadPriority : u8
+{
+    Low,
+    Normal,
+    High,
+};
+
 // Native thread with explicit start, join, and naming. A joinable Thread joins
 // in its destructor; engine code never detaches.
 class Thread
@@ -40,6 +50,9 @@ public:
     [[nodiscard]] u64 ThreadId() const noexcept;
 
     static void SetCurrentThreadName(const char* name) noexcept;
+    // Applies to the calling thread. Best effort: returns false when the OS
+    // refuses (raising priority often needs privileges on POSIX systems).
+    static bool SetCurrentThreadPriority(ThreadPriority priority) noexcept;
     [[nodiscard]] static u64 CurrentThreadId() noexcept;
 
 private:

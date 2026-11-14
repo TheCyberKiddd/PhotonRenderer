@@ -263,17 +263,21 @@ CG_TEST(software_shader_depth_only_draw_matches_the_shaded_pipeline)
     // Geometry that crosses the near plane and spans depth, so clipping, the
     // perspective divide, winding, and the depth test all take part.
     const VertexInput vertices[] = {
-        VertexInput{Vec3{-1.5f, -1.0f, -0.5f}}, VertexInput{Vec3{1.5f, -1.0f, -3.0f}},
-        VertexInput{Vec3{0.0f, 1.4f, -1.5f}},   VertexInput{Vec3{-1.2f, 0.9f, -2.2f}},
-        VertexInput{Vec3{1.4f, 0.4f, -0.8f}},   VertexInput{Vec3{0.2f, -1.3f, -2.6f}},
+        VertexInput{Vec3{-1.5f, -1.0f, -0.5f}},
+        VertexInput{Vec3{1.5f, -1.0f, -3.0f}},
+        VertexInput{Vec3{0.0f, 1.4f, -1.5f}},
+        VertexInput{Vec3{-1.2f, 0.9f, -2.2f}},
+        VertexInput{Vec3{1.4f, 0.4f, -0.8f}},
+        VertexInput{Vec3{0.2f, -1.3f, -2.6f}},
         // This vertex sits behind the near plane at z = 1.8, so the triangle
         // is clipped and both pipelines must emit the same fan.
-        VertexInput{Vec3{-0.9f, -0.2f, 2.6f}},  VertexInput{Vec3{1.1f, 0.7f, -0.3f}},
+        VertexInput{Vec3{-0.9f, -0.2f, 2.6f}},
+        VertexInput{Vec3{1.1f, 0.7f, -0.3f}},
         VertexInput{Vec3{0.1f, 1.2f, -1.1f}},
     };
     const Mat4 projection = Mat4::PerspectiveReverseZ(1.1f, 1.0f, 0.2f, 12.0f);
-    const Mat4 view = Mat4::LookAt(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, -1.0f},
-                                   Vec3{0.0f, 1.0f, 0.0f});
+    const Mat4 view =
+        Mat4::LookAt(Vec3{0.0f, 0.0f, 2.0f}, Vec3{0.0f, 0.0f, -1.0f}, Vec3{0.0f, 1.0f, 0.0f});
     const Mat4 clipFromObject = projection * view;
 
     TransformShaderData transform{};
@@ -286,17 +290,17 @@ CG_TEST(software_shader_depth_only_draw_matches_the_shaded_pipeline)
     shaded.pixelShader = [](const Varyings&, const void*) noexcept
     { return Color{1.0f, 1.0f, 1.0f, 1.0f}; };
     shaded.userData = &transform;
-    shaded.pipeline.viewport = Viewport{0.0f, 0.0f, static_cast<f32>(kSize),
-                                       static_cast<f32>(kSize)};
+    shaded.pipeline.viewport =
+        Viewport{0.0f, 0.0f, static_cast<f32>(kSize), static_cast<f32>(kSize)};
     shaded.pipeline.cullMode = CullMode::None;
     shaded.pipeline.useJobs = false;
 
     color.Clear(Color{0.0f, 0.0f, 0.0f, 1.0f});
     shadedDepth.Clear();
     PipelineStats shadedStats{};
-    CG_REQUIRE(static_cast<bool>(DrawShadedTriangles(shaded, Span<const VertexInput>(vertices),
-                                                     color, shadedDepth, nullptr, heap,
-                                                     &shadedStats)));
+    CG_REQUIRE(
+        static_cast<bool>(DrawShadedTriangles(shaded, Span<const VertexInput>(vertices), color,
+                                              shadedDepth, nullptr, heap, &shadedStats)));
 
     DepthOnlyShaderDesc depthDesc{};
     depthDesc.vertexShader = &TransformDepthOnlyVertexShader;
@@ -305,8 +309,8 @@ CG_TEST(software_shader_depth_only_draw_matches_the_shaded_pipeline)
 
     depthOnly.Clear();
     PipelineStats depthStats{};
-    CG_REQUIRE(static_cast<bool>(DrawDepthOnlyTriangles(depthDesc, Span<const VertexInput>(vertices),
-                                                        depthOnly, nullptr, heap, &depthStats)));
+    CG_REQUIRE(static_cast<bool>(DrawDepthOnlyTriangles(
+        depthDesc, Span<const VertexInput>(vertices), depthOnly, nullptr, heap, &depthStats)));
 
     CG_EXPECT_EQ(depthStats.triangles, shadedStats.triangles);
     CG_EXPECT_EQ(depthStats.trianglesClipped, shadedStats.trianglesClipped);

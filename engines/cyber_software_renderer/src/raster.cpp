@@ -1,3 +1,5 @@
+#include "scratch_allocator.h"
+
 #include <cyber/core/types.h>
 #include <cyber/jobs/job_system.h>
 #include <cyber/memory/dynamic_array.h>
@@ -115,7 +117,7 @@ i64 CeilDiv(i64 value, i64 divisor) noexcept
 
 bool SnapCoordinate(f32 value, i32& result) noexcept
 {
-    if (!std::isfinite(value))
+    if (!math::IsFinite(value))
     {
         return false;
     }
@@ -125,7 +127,11 @@ bool SnapCoordinate(f32 value, i32& result) noexcept
     {
         return false;
     }
-    result = static_cast<i32>(std::lround(scaled));
+    // Round half away from zero, as std::lround does, without its CRT call.
+    // `scaled` is an f32 times a power of two bounded by 2^22, so adding 0.5
+    // is exact in f64 and truncation yields exactly lround's result.
+    result = static_cast<i32>(scaled >= 0.0 ? static_cast<i64>(scaled + 0.5)
+                                            : -static_cast<i64>(0.5 - scaled));
     return true;
 }
 
@@ -278,7 +284,7 @@ bool PrepareDepthTriangle(const DepthRasterTriangle& input, i32 width, i32 heigh
     f32 inverseW[3] = {input.v0.inverseW, input.v1.inverseW, input.v2.inverseW};
     for (i32 index = 0; index < 3; ++index)
     {
-        if (!std::isfinite(depth[index]) || !std::isfinite(inverseW[index]) ||
+        if (!math::IsFinite(depth[index]) || !math::IsFinite(inverseW[index]) ||
             !(inverseW[index] > 0.0f))
         {
             return false;
@@ -328,7 +334,7 @@ bool PrepareDepthOnlyTriangle(const DepthOnlyRasterTriangle& input, i32 width, i
     f32 inverseW[3] = {input.v0.inverseW, input.v1.inverseW, input.v2.inverseW};
     for (i32 index = 0; index < 3; ++index)
     {
-        if (!std::isfinite(depth[index]) || !std::isfinite(inverseW[index]) ||
+        if (!math::IsFinite(depth[index]) || !math::IsFinite(inverseW[index]) ||
             !(inverseW[index] > 0.0f))
         {
             return false;
@@ -371,7 +377,7 @@ bool PrepareShadedTriangle(const ShadedRasterTriangle& input, i32 width, i32 hei
     f32 inverseW[3] = {input.v0.inverseW, input.v1.inverseW, input.v2.inverseW};
     for (i32 index = 0; index < 3; ++index)
     {
-        if (!std::isfinite(depth[index]) || !std::isfinite(inverseW[index]) ||
+        if (!math::IsFinite(depth[index]) || !math::IsFinite(inverseW[index]) ||
             !(inverseW[index] > 0.0f))
         {
             return false;
@@ -810,8 +816,8 @@ void RasterizeTile(const TileContext& context, u32 tileIndex) noexcept
         }
         if (context.target == nullptr)
         {
-            written += RasterizeBoxDepthOnly(*context.depth, triangle, minX, minY, maxX, maxY,
-                                             rejected);
+            written +=
+                RasterizeBoxDepthOnly(*context.depth, triangle, minX, minY, maxX, maxY, rejected);
         }
         else if (context.depth != nullptr && context.pixelShader != nullptr)
         {
@@ -904,11 +910,10 @@ i32 ClampToRange(i32 value, i32 low, i32 high) noexcept
 // the caller supplies.
 template <typename PrepareFunction>
 core::Status<core::Error> RasterizeImpl(Framebuffer* target, DepthBuffer* depth, i32 width,
-                                        i32 height, usize triangleCount,
-                                        jobs::JobSystem* jobSystem, memory::Allocator& allocator,
-                                        const RasterizerDesc& desc, RasterStats* stats,
-                                        PixelShaderFn pixelShader, const void* userData,
-                                        PrepareFunction&& prepare) noexcept
+                                        i32 height, usize triangleCount, jobs::JobSystem* jobSystem,
+                                        memory::Allocator& allocator, const RasterizerDesc& desc,
+                                        RasterStats* stats, PixelShaderFn pixelShader,
+                                        const void* userData, PrepareFunction&& prepare) noexcept
 {
     if (triangleCount == 0)
     {
@@ -943,13 +948,19 @@ core::Status<core::Error> RasterizeImpl(Framebuffer* target, DepthBuffer* depth,
     const u32 tilesX = static_cast<u32>(tilesX64);
     const u32 tileCount = static_cast<u32>(tileCount64);
 
-    memory::DynamicArray<PreparedTriangle> prepared(allocator);
+    // Transient per-draw arrays come from the thread's retained scratch arena;
+    // see scratch_allocator.h for why they no longer use `allocator`.
+    (void)allocator;
+    detail::ScratchScope scratch;
+    memory::Allocator& transient = scratch.Allocator();
+
+    memory::DynamicArray<PreparedTriangle> prepared(transient);
     if (!prepared.TryResize(triangleCount))
     {
         return core::Status<core::Error>::Err(
             core::Error{core::ErrorCode::Internal, "failed to prepare triangles"});
     }
-    memory::DynamicArray<u32> counts(allocator);
+    memory::DynamicArray<u32> counts(transient);
     if (!counts.TryResize(tileCount))
     {
         return core::Status<core::Error>::Err(
@@ -987,7 +998,7 @@ core::Status<core::Error> RasterizeImpl(Framebuffer* target, DepthBuffer* depth,
         }
     }
 
-    memory::DynamicArray<u32> offsets(allocator);
+    memory::DynamicArray<u32> offsets(transient);
     if (!offsets.TryResize(static_cast<usize>(tileCount) + 1))
     {
         return core::Status<core::Error>::Err(
@@ -1006,13 +1017,13 @@ core::Status<core::Error> RasterizeImpl(Framebuffer* target, DepthBuffer* depth,
     }
     offsets[tileCount] = static_cast<u32>(running);
 
-    memory::DynamicArray<u32> indices(allocator);
+    memory::DynamicArray<u32> indices(transient);
     if (!indices.TryResize(static_cast<usize>(running)))
     {
         return core::Status<core::Error>::Err(
             core::Error{core::ErrorCode::Internal, "failed to allocate tile bins"});
     }
-    memory::DynamicArray<u32> cursor(allocator);
+    memory::DynamicArray<u32> cursor(transient);
     if (!cursor.TryResize(tileCount))
     {
         return core::Status<core::Error>::Err(
@@ -1039,7 +1050,7 @@ core::Status<core::Error> RasterizeImpl(Framebuffer* target, DepthBuffer* depth,
         }
     }
 
-    memory::DynamicArray<TileCounters> tileCounters(allocator);
+    memory::DynamicArray<TileCounters> tileCounters(transient);
     if (!tileCounters.TryResize(tileCount))
     {
         return core::Status<core::Error>::Err(
@@ -1101,8 +1112,8 @@ void DrawLine(Framebuffer& target, const math::Vec2& start, const math::Vec2& en
     {
         return;
     }
-    if (!std::isfinite(start.x) || !std::isfinite(start.y) || !std::isfinite(end.x) ||
-        !std::isfinite(end.y))
+    if (!math::IsFinite(start.x) || !math::IsFinite(start.y) || !math::IsFinite(end.x) ||
+        !math::IsFinite(end.y))
     {
         return;
     }
@@ -1253,7 +1264,8 @@ RasterizeDepthTestedTriangles(Framebuffer& target, DepthBuffer& depth,
 }
 
 core::Status<core::Error>
-RasterizeDepthOnlyTriangles(DepthBuffer& depth, memory::Span<const DepthOnlyRasterTriangle> triangles,
+RasterizeDepthOnlyTriangles(DepthBuffer& depth,
+                            memory::Span<const DepthOnlyRasterTriangle> triangles,
                             jobs::JobSystem* jobSystem, memory::Allocator& allocator,
                             const RasterizerDesc& desc, RasterStats* stats) noexcept
 {

@@ -21,6 +21,8 @@ the relevant phase exists. A sample that is not tested will break.
 | `14_global_illumination/` | Cornell-style room baked into an irradiance volume and rendered with and without it, ray-traced lamp shadows, the denoiser on one-sample soft shadows, and the ray-tracing policy's answer for every local adapter. | 31 |
 | `15_gallery/` | Rich room of varied shapes and materials, comparing the Phase 31 irradiance bake with image-based lighting. | 31 |
 | `17_gpu_driven/` | A million-instance voxel landscape frustum-culled and LOD-selected on the GPU and drawn with one indirect-count draw call. | 32 |
+| `18_texture_streaming/` | 400 BC1 textures, 16.7 times the video-memory budget, streamed down a corridor flythrough with hitch, budget, and residency-view measurements. | 33 |
+| `19_virtual_texture/` | Experimental software-rendered terrain with virtual page feedback, a bounded physical cache, and visible mip-residency output. | 33 |
 | `host_app/` | Stub Cyber Engine host that loads renderer plugins. | 25 |
 
 Each sample has a README with the exact command to build and run it, and the

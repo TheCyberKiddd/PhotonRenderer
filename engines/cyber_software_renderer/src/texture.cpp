@@ -42,7 +42,7 @@ constexpr f32 kUnorm8ToLinear = 1.0f / 255.0f;
 
 [[nodiscard]] f32 WrapNormalized(f32 value, AddressMode mode) noexcept
 {
-    if (!std::isfinite(value))
+    if (!math::IsFinite(value))
     {
         return 0.0f;
     }
@@ -460,7 +460,7 @@ math::Color SampleTextureLevel(const Texture& texture, f32 u, f32 v, f32 level,
     }
 
     const f32 lastLevel = static_cast<f32>(texture.MipLevels() - 1);
-    const f32 clampedLevel = std::clamp(std::isfinite(level) ? level : 0.0f, 0.0f, lastLevel);
+    const f32 clampedLevel = std::clamp(math::IsFinite(level) ? level : 0.0f, 0.0f, lastLevel);
 
     if (sampler.mipFilter == FilterMode::Nearest)
     {

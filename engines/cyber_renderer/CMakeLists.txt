@@ -6,6 +6,7 @@ cyber_add_module(
         src/clustered_lighting.cpp
         src/descriptor_allocator.cpp
         src/frame_stream.cpp
+        src/gpu_texture_pool.cpp
         src/gpu_culling_pipeline.cpp
         src/gpu_driven.cpp
         src/gpu_light_culling.cpp
@@ -18,11 +19,14 @@ cyber_add_module(
         src/render_graph.cpp
         src/render_thread.cpp
         src/shadow_pass.cpp
+        src/texture_streaming.cpp
+        src/virtual_texture.cpp
     PUBLIC_HEADERS
         include/cyber/renderer/bindless_table.h
         include/cyber/renderer/clustered_lighting.h
         include/cyber/renderer/descriptor_allocator.h
         include/cyber/renderer/frame_stream.h
+        include/cyber/renderer/gpu_texture_pool.h
         include/cyber/renderer/gpu_culling_pipeline.h
         include/cyber/renderer/gpu_driven.h
         include/cyber/renderer/gpu_light_culling.h
@@ -34,6 +38,8 @@ cyber_add_module(
         include/cyber/renderer/render_graph.h
         include/cyber/renderer/render_thread.h
         include/cyber/renderer/shadow_pass.h
+        include/cyber/renderer/texture_streaming.h
+        include/cyber/renderer/virtual_texture.h
     DEPENDS core math memory jobs platform perf rhi shaders
 )
 
@@ -130,3 +136,30 @@ cyber_add_test(
         tests/gpu_driven_d3d12_test.cpp
     DEPENDS renderer scene jobs math memory rhi
 )
+
+cyber_add_test(
+    NAME renderer_texture_streaming
+    SOURCES
+        tests/texture_streaming_test.cpp
+    DEPENDS renderer platform memory
+)
+
+cyber_add_test(
+    NAME renderer_gpu_texture_pool
+    SOURCES
+        tests/gpu_texture_pool_test.cpp
+    DEPENDS renderer rhi platform memory
+)
+
+cyber_add_test(
+    NAME renderer_virtual_texture
+    SOURCES
+        tests/virtual_texture_test.cpp
+    DEPENDS renderer platform memory
+)
+
+if(CYBER_BUILD_TESTS)
+    set_tests_properties(renderer_texture_streaming PROPERTIES TIMEOUT 60)
+    set_tests_properties(renderer_gpu_texture_pool PROPERTIES TIMEOUT 120)
+    set_tests_properties(renderer_virtual_texture PROPERTIES TIMEOUT 120)
+endif()

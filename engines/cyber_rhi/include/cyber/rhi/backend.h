@@ -192,6 +192,22 @@ struct DeviceInterface
     // the subresource is invalid.
     ResourceState (*textureState)(const void* internal, TextureHandle texture, u32 mipLevel,
                                   u32 arrayLayer) noexcept;
+    // Reserved textures (Phase 33). A backend without `Feature::ReservedTextures`
+    // leaves these null and the device reports `ErrorCode::Unsupported`.
+    // Creates a heap of `desc.tileCount` 64 KiB tiles for reserved textures.
+    Status<Error> (*createTileHeap)(void* internal, const TileHeapDesc& desc,
+                                    TileHeapHandle* out) noexcept;
+    // Releases a heap. Tiles still mapped to it read as zero afterwards.
+    Status<Error> (*destroyTileHeap)(void* internal, TileHeapHandle heap) noexcept;
+    // The driver's tiling of a reserved texture, or `valid == false`.
+    TextureTiling (*textureTiling)(const void* internal, TextureHandle texture) noexcept;
+    // Maps or unmaps tiles, ordered on `queue` with the work submitted to it
+    // before and after. Every entry is validated before any is applied.
+    Status<Error> (*updateTileMappings)(void* internal, QueueKind queue,
+                                        memory::Span<const TileMapping> mappings) noexcept;
+    // Where one tile currently points (the heap and tile fields of `tile` are
+    // ignored). Unmapped or invalid tiles report `mapped == false`.
+    TileMappingInfo (*tileMapping)(const void* internal, const TileMapping& tile) noexcept;
     // Creates a sampler and writes its handle to `out`, which must be non-null.
     Status<Error> (*createSampler)(void* internal, const SamplerDesc& desc,
                                    SamplerHandle* out) noexcept;

@@ -22,6 +22,7 @@ set(CYBER_SOFTWARE_SOURCES
     src/present_target.cpp
     src/raster.cpp
     src/raytrace.cpp
+    src/scratch_allocator.cpp
     src/reflections.cpp
     src/shader.cpp
     src/shadow.cpp

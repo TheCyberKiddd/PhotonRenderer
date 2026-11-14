@@ -50,6 +50,8 @@ a phase actually works.
 | [reports/phase-31.md](reports/phase-31.md) | Phase 31 implementation and validation evidence. |
 | [design/phase-32-gpu-driven.md](design/phase-32-gpu-driven.md) | Phase 32 GPU culling, Hi-Z occlusion, indirect-count draws, meshlets, async compute, and how the GPU is held to the CPU culler. |
 | [reports/phase-32.md](reports/phase-32.md) | Phase 32 implementation and validation evidence. |
+| [design/phase-33-compression-streaming.md](design/phase-33-compression-streaming.md) | Phase 33 BCn codec, PSNR floors, the page-pool residency manager, eviction without thrashing, and how hitches are measured. |
+| [reports/phase-33.md](reports/phase-33.md) | Phase 33 implementation and validation evidence, and the software renderer performance pass. |
 | [graphics/PHASE_15.md](graphics/PHASE_15.md) | Phase 15 implementation summary and capture status. |
 | [specs/](specs/) | RHI, shader language, and asset format specifications. |
 | [testing/](testing/) | Test layers, golden images, sanitizers, and CI gates. |

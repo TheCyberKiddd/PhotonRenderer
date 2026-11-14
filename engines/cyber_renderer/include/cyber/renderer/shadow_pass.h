@@ -58,8 +58,7 @@ struct ShadowMapResources
 /// Imports a caller-owned shadow map into a frame graph. Destroy the graph
 /// before destroying the map resources.
 [[nodiscard]] Result<GraphResourceHandle, Error>
-ImportShadowMap(RenderGraph& graph, const char* name,
-                const ShadowMapResources& resources) noexcept;
+ImportShadowMap(RenderGraph& graph, const char* name, const ShadowMapResources& resources) noexcept;
 
 /// Destroys the map view and texture, clearing their handles on success.
 [[nodiscard]] Status<Error> DestroyShadowMapResources(cyber::rhi::Device& device,

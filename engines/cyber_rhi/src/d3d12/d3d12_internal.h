@@ -106,10 +106,32 @@ struct D3D12BufferSlot
     u32 generation = 0;
 };
 
+// Where one tile of a reserved texture points, mirrored on the CPU so
+// `TileMappingOf` can answer without a GPU query (Phase 33).
+struct D3D12TileEntry
+{
+    TileHeapHandle heap{};
+    u32 tile = 0;
+};
+
+// A heap of 64 KiB tiles reserved textures map onto.
+struct D3D12TileHeapSlot
+{
+    ID3D12Heap* heap = nullptr;
+    TileHeapDesc desc{};
+    bool alive = false;
+    u32 generation = 0;
+};
+
 struct D3D12TextureSlot
 {
     ID3D12Resource* resource = nullptr;
     TextureDesc desc{};
+    // Reserved textures only: the driver's tiling and the mapping mirror,
+    // allocated from the device allocator, one entry per tile in
+    // `validation::TileLinearIndex` order.
+    TextureTiling tiling{};
+    D3D12TileEntry* tiles = nullptr;
     ResourceState states[kMaxTrackedSubresources]{};
     D3D12_RESOURCE_STATES native[kMaxTrackedSubresources]{};
     // A presentable image belongs to its swapchain: the two texture entries that
@@ -343,7 +365,8 @@ struct D3D12Device
           freePipelineSlots(allocator), pipelineCaches(allocator),
           freePipelineCacheSlots(allocator), commandLists(allocator),
           freeCommandListSlots(allocator), swapChains(allocator), freeSwapChainSlots(allocator),
-          deferredReclaims(allocator), memory(allocator)
+          tileHeaps(allocator), freeTileHeapSlots(allocator), deferredReclaims(allocator),
+          memory(allocator)
     {
     }
 
@@ -387,6 +410,8 @@ struct D3D12Device
     DynamicArray<u32> freeCommandListSlots;
     DynamicArray<D3D12SwapChainSlot> swapChains;
     DynamicArray<u32> freeSwapChainSlots;
+    DynamicArray<D3D12TileHeapSlot> tileHeaps;
+    DynamicArray<u32> freeTileHeapSlots;
 
     // Shader-visible descriptors for views and samplers. One heap each because
     // D3D12 refuses to mix sampler and resource descriptors in one heap. The
@@ -471,6 +496,7 @@ struct D3D12Device
 [[nodiscard]] D3D12TimestampQueryHeapSlot* Resolve(D3D12Device& device,
                                                    TimestampQueryHeapHandle handle) noexcept;
 [[nodiscard]] D3D12BufferSlot* Resolve(D3D12Device& device, BufferHandle handle) noexcept;
+[[nodiscard]] D3D12TileHeapSlot* Resolve(D3D12Device& device, TileHeapHandle handle) noexcept;
 [[nodiscard]] D3D12TextureSlot* Resolve(D3D12Device& device, TextureHandle handle) noexcept;
 [[nodiscard]] D3D12ViewSlot* Resolve(D3D12Device& device, TextureViewHandle handle) noexcept;
 [[nodiscard]] D3D12SamplerSlot* Resolve(D3D12Device& device, SamplerHandle handle) noexcept;
@@ -557,6 +583,20 @@ void FlushTransientReclaims(D3D12Device& device) noexcept;
                                                    TextureViewHandle view) noexcept;
 [[nodiscard]] ResourceState D3D12TextureState(const void* internal, TextureHandle texture,
                                               u32 mipLevel, u32 arrayLayer) noexcept;
+// Reserved textures and tile heaps (Phase 33), in d3d12_tiles.cpp.
+[[nodiscard]] Status<Error> D3D12CreateTileHeap(void* internal, const TileHeapDesc& desc,
+                                                TileHeapHandle* out) noexcept;
+[[nodiscard]] Status<Error> D3D12DestroyTileHeap(void* internal, TileHeapHandle heap) noexcept;
+[[nodiscard]] TextureTiling D3D12TextureTiling(const void* internal,
+                                               TextureHandle texture) noexcept;
+[[nodiscard]] Status<Error>
+D3D12UpdateTileMappings(void* internal, QueueKind queue,
+                        memory::Span<const TileMapping> mappings) noexcept;
+[[nodiscard]] TileMappingInfo D3D12TileMapping(const void* internal,
+                                               const TileMapping& tile) noexcept;
+// Reads the driver's tiling of a reserved resource into the RHI's shape.
+[[nodiscard]] TextureTiling QueryResourceTiling(ID3D12Device* device, ID3D12Resource* resource,
+                                                const TextureDesc& desc) noexcept;
 [[nodiscard]] Status<Error> D3D12CreateSampler(void* internal, const SamplerDesc& desc,
                                                SamplerHandle* out) noexcept;
 [[nodiscard]] Status<Error> D3D12DestroySampler(void* internal, SamplerHandle sampler) noexcept;

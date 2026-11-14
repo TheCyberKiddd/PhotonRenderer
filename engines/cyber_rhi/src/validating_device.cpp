@@ -1599,6 +1599,93 @@ u32 WrReportLeaks(const void* internal) noexcept
     return device->real->reportLeaks(device->realInternal);
 }
 
+// Reserved textures (Phase 33). The wrapper checks what it can see without
+// tracking heaps -- the feature, the arguments, and every tile coordinate
+// against the backend's own tiling -- and leaves heap liveness to the backend,
+// which validates the whole batch before applying any of it.
+Status<Error> WrCreateTileHeap(void* internal, const TileHeapDesc& desc,
+                               TileHeapHandle* out) noexcept
+{
+    const auto* device = static_cast<const ValidatingDevice*>(internal);
+    CG_ASSERT(device != nullptr && device->real != nullptr);
+    if (!device->capabilities.features.Has(Feature::ReservedTextures) ||
+        device->real->createTileHeap == nullptr)
+    {
+        return Status<Error>::Err(Error{ErrorCode::Unsupported,
+                                        "validating device: reserved textures are not supported"});
+    }
+    if (desc.tileCount == 0 || out == nullptr)
+    {
+        CG_LOG(Warning, Rhi, "validating device rejected createTileHeap: no tiles or no output");
+        return Status<Error>::Err(
+            Error{ErrorCode::InvalidArgument, "validating device: a tile heap needs tiles"});
+    }
+    return device->real->createTileHeap(device->realInternal, desc, out);
+}
+
+Status<Error> WrDestroyTileHeap(void* internal, TileHeapHandle heap) noexcept
+{
+    const auto* device = static_cast<const ValidatingDevice*>(internal);
+    CG_ASSERT(device != nullptr && device->real != nullptr);
+    if (device->real->destroyTileHeap == nullptr)
+    {
+        return Status<Error>::Err(Error{ErrorCode::Unsupported,
+                                        "validating device: reserved textures are not supported"});
+    }
+    return device->real->destroyTileHeap(device->realInternal, heap);
+}
+
+TextureTiling WrTextureTiling(const void* internal, TextureHandle texture) noexcept
+{
+    const auto* device = static_cast<const ValidatingDevice*>(internal);
+    CG_ASSERT(device != nullptr && device->real != nullptr);
+    return device->real->textureTiling != nullptr
+               ? device->real->textureTiling(device->realInternal, texture)
+               : TextureTiling{};
+}
+
+Status<Error> WrUpdateTileMappings(void* internal, QueueKind queue,
+                                   memory::Span<const TileMapping> mappings) noexcept
+{
+    const auto* device = static_cast<const ValidatingDevice*>(internal);
+    CG_ASSERT(device != nullptr && device->real != nullptr);
+    if (device->real->updateTileMappings == nullptr || device->real->textureTiling == nullptr)
+    {
+        return Status<Error>::Err(Error{ErrorCode::Unsupported,
+                                        "validating device: reserved textures are not supported"});
+    }
+    if (static_cast<u32>(queue) >= kQueueKindCount)
+    {
+        return Status<Error>::Err(
+            Error{ErrorCode::InvalidArgument, "validating device: queue kind is invalid"});
+    }
+    for (usize index = 0; index < mappings.Size(); ++index)
+    {
+        const TileMapping& mapping = mappings[index];
+        const TextureTiling tiling =
+            device->real->textureTiling(device->realInternal, mapping.texture);
+        TileMapping coordinate = mapping;
+        coordinate.heap = TileHeapHandle{};
+        Error error{};
+        if (!validation::ValidateTileMapping(tiling, coordinate, 0, false, &error))
+        {
+            CG_LOG(Warning, Rhi, "validating device rejected tile mapping %zu: %s",
+                   static_cast<size_t>(index), error.message);
+            return Status<Error>::Err(error);
+        }
+    }
+    return device->real->updateTileMappings(device->realInternal, queue, mappings);
+}
+
+TileMappingInfo WrTileMapping(const void* internal, const TileMapping& tile) noexcept
+{
+    const auto* device = static_cast<const ValidatingDevice*>(internal);
+    CG_ASSERT(device != nullptr && device->real != nullptr);
+    return device->real->tileMapping != nullptr
+               ? device->real->tileMapping(device->realInternal, tile)
+               : TileMappingInfo{};
+}
+
 // The wrapper's own per-device table, forwarding to the backend the wrapper
 // wraps. Static lifetime so `Device::Release` can keep using it while other
 // devices exist.
@@ -1630,6 +1717,11 @@ const DeviceInterface kValidatingDeviceInterface = {
     &WrDestroyTextureView,
     &WrTextureViewInfo,
     &WrTextureState,
+    &WrCreateTileHeap,
+    &WrDestroyTileHeap,
+    &WrTextureTiling,
+    &WrUpdateTileMappings,
+    &WrTileMapping,
     &WrCreateSampler,
     &WrDestroySampler,
     &WrTransition,

@@ -12,12 +12,12 @@ namespace
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 f32 FiniteNonNegative(f32 value) noexcept
 {
-    return std::isfinite(value) && value > 0.0f ? value : 0.0f;
+    return math::IsFinite(value) && value > 0.0f ? value : 0.0f;
 }
 
 bool IsFinite(const math::Mat4& value) noexcept
@@ -25,8 +25,8 @@ bool IsFinite(const math::Mat4& value) noexcept
     for (cyber::core::usize column = 0; column < 4; ++column)
     {
         const math::Vec4& vector = value[column];
-        if (!std::isfinite(vector.x) || !std::isfinite(vector.y) || !std::isfinite(vector.z) ||
-            !std::isfinite(vector.w))
+        if (!math::IsFinite(vector.x) || !math::IsFinite(vector.y) || !math::IsFinite(vector.z) ||
+            !math::IsFinite(vector.w))
         {
             return false;
         }
@@ -46,20 +46,19 @@ f32 LinearShadowDistance(const ShadowMapView& shadow, f32 reverseZDepth) noexcep
 
 bool IsPcssConfigured(const ShadowMapView& shadow) noexcept
 {
-    if (!shadow.usePcss || !std::isfinite(shadow.nearPlane) ||
-        !std::isfinite(shadow.farPlane) || shadow.nearPlane <= 0.0f ||
-        shadow.farPlane <= shadow.nearPlane)
+    if (!shadow.usePcss || !math::IsFinite(shadow.nearPlane) || !math::IsFinite(shadow.farPlane) ||
+        shadow.nearPlane <= 0.0f || shadow.farPlane <= shadow.nearPlane)
     {
         return false;
     }
     if (shadow.perspectiveProjection)
     {
-        return std::isfinite(shadow.verticalFovRadians) && shadow.verticalFovRadians > 0.0f &&
+        return math::IsFinite(shadow.verticalFovRadians) && shadow.verticalFovRadians > 0.0f &&
                shadow.verticalFovRadians < cyber::math::kPi &&
-               std::isfinite(shadow.sourceRadius) && shadow.sourceRadius > 0.0f;
+               math::IsFinite(shadow.sourceRadius) && shadow.sourceRadius > 0.0f;
     }
-    return std::isfinite(shadow.worldUnitsPerTexel) && shadow.worldUnitsPerTexel > 0.0f &&
-           std::isfinite(shadow.sourceAngularRadiusRadians) &&
+    return math::IsFinite(shadow.worldUnitsPerTexel) && shadow.worldUnitsPerTexel > 0.0f &&
+           math::IsFinite(shadow.sourceAngularRadiusRadians) &&
            shadow.sourceAngularRadiusRadians > 0.0f &&
            shadow.sourceAngularRadiusRadians < cyber::math::kHalfPi;
 }
@@ -83,8 +82,8 @@ f32 EvaluateShadowVisibility(const ShadowMapView& shadow, const math::Vec3& worl
     const math::Vec3 biasedPosition = worldPosition + normal * normalBias;
     const math::Vec4 clip = shadow.clipFromWorld *
                             math::Vec4{biasedPosition.x, biasedPosition.y, biasedPosition.z, 1.0f};
-    if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.z) ||
-        !std::isfinite(clip.w) || clip.w <= 1.0e-8f)
+    if (!math::IsFinite(clip.x) || !math::IsFinite(clip.y) || !math::IsFinite(clip.z) ||
+        !math::IsFinite(clip.w) || clip.w <= 1.0e-8f)
     {
         return 1.0f;
     }
@@ -93,7 +92,7 @@ f32 EvaluateShadowVisibility(const ShadowMapView& shadow, const math::Vec3& worl
     const f32 ndcX = clip.x * inverseW;
     const f32 ndcY = clip.y * inverseW;
     const f32 receiverDepth = clip.z * inverseW;
-    if (!std::isfinite(ndcX) || !std::isfinite(ndcY) || !std::isfinite(receiverDepth) ||
+    if (!math::IsFinite(ndcX) || !math::IsFinite(ndcY) || !math::IsFinite(receiverDepth) ||
         ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f || receiverDepth < 0.0f ||
         receiverDepth > 1.0f)
     {
@@ -113,20 +112,17 @@ f32 EvaluateShadowVisibility(const ShadowMapView& shadow, const math::Vec3& worl
         std::min(static_cast<cyber::core::i32>(v),
                  static_cast<cyber::core::i32>(shadow.depth->Height() - 1));
     const u32 maximumRadius =
-        (shadow.softFilter || shadow.usePcss) ? kMaxSoftShadowFilterRadius
-                                              : kMaxShadowFilterRadius;
+        (shadow.softFilter || shadow.usePcss) ? kMaxSoftShadowFilterRadius : kMaxShadowFilterRadius;
     const cyber::core::i32 radius =
         static_cast<cyber::core::i32>(std::min(shadow.filterRadius, maximumRadius));
 
     if (IsPcssConfigured(shadow) && radius > 0)
     {
         constexpr f32 kDiskOffsets[16][2] = {
-            {-0.1305f, -0.9914f}, {0.4321f, -0.9018f},  {-0.7284f, -0.6842f},
-            {0.8783f, -0.4301f},  {-0.9912f, -0.1320f}, {0.6834f, 0.1591f},
-            {-0.3567f, 0.2553f},  {0.9732f, 0.2265f},   {-0.8691f, 0.4885f},
-            {0.1712f, 0.5902f},   {-0.5856f, 0.8105f},  {0.5501f, 0.8344f},
-            {0.3008f, -0.4794f},  {-0.0762f, 0.9621f},  {0.8173f, 0.7440f},
-            {-0.4302f, -0.3107f},
+            {-0.1305f, -0.9914f}, {0.4321f, -0.9018f}, {-0.7284f, -0.6842f}, {0.8783f, -0.4301f},
+            {-0.9912f, -0.1320f}, {0.6834f, 0.1591f},  {-0.3567f, 0.2553f},  {0.9732f, 0.2265f},
+            {-0.8691f, 0.4885f},  {0.1712f, 0.5902f},  {-0.5856f, 0.8105f},  {0.5501f, 0.8344f},
+            {0.3008f, -0.4794f},  {-0.0762f, 0.9621f}, {0.8173f, 0.7440f},   {-0.4302f, -0.3107f},
         };
         const f32 maxRadius = static_cast<f32>(radius);
         const f32 receiverDistance = LinearShadowDistance(shadow, biasedDepth);
@@ -134,19 +130,17 @@ f32 EvaluateShadowVisibility(const ShadowMapView& shadow, const math::Vec3& worl
         if (shadow.perspectiveProjection)
         {
             const f32 tanHalfFov = std::tan(shadow.verticalFovRadians * 0.5f);
-            searchRadius =
-                shadow.sourceRadius * (receiverDistance - shadow.nearPlane) /
-                (receiverDistance * 2.0f * shadow.nearPlane * tanHalfFov) *
-                static_cast<f32>(shadow.depth->Width());
+            searchRadius = shadow.sourceRadius * (receiverDistance - shadow.nearPlane) /
+                           (receiverDistance * 2.0f * shadow.nearPlane * tanHalfFov) *
+                           static_cast<f32>(shadow.depth->Width());
         }
         else
         {
-            searchRadius =
-                std::tan(shadow.sourceAngularRadiusRadians) *
-                std::max(receiverDistance - shadow.nearPlane, 0.0f) /
-                shadow.worldUnitsPerTexel;
+            searchRadius = std::tan(shadow.sourceAngularRadiusRadians) *
+                           std::max(receiverDistance - shadow.nearPlane, 0.0f) /
+                           shadow.worldUnitsPerTexel;
         }
-        if (!std::isfinite(searchRadius) || !std::isfinite(receiverDistance) ||
+        if (!math::IsFinite(searchRadius) || !math::IsFinite(receiverDistance) ||
             receiverDistance <= 0.0f)
         {
             searchRadius = 1.0f;
@@ -178,8 +172,7 @@ f32 EvaluateShadowVisibility(const ShadowMapView& shadow, const math::Vec3& worl
             return 1.0f;
         }
 
-        const f32 averageBlockerDistance =
-            blockerDistanceSum / static_cast<f32>(blockerCount);
+        const f32 averageBlockerDistance = blockerDistanceSum / static_cast<f32>(blockerCount);
         f32 penumbraRadius = 0.0f;
         if (receiverDistance > averageBlockerDistance && averageBlockerDistance > 0.0f)
         {
@@ -187,18 +180,17 @@ f32 EvaluateShadowVisibility(const ShadowMapView& shadow, const math::Vec3& worl
             {
                 penumbraRadius =
                     shadow.sourceRadius * (receiverDistance - averageBlockerDistance) /
-                    averageBlockerDistance *
-                    static_cast<f32>(shadow.depth->Width()) /
+                    averageBlockerDistance * static_cast<f32>(shadow.depth->Width()) /
                     (2.0f * receiverDistance * std::tan(shadow.verticalFovRadians * 0.5f));
             }
             else
             {
-                penumbraRadius =
-                    std::tan(shadow.sourceAngularRadiusRadians) *
-                    (receiverDistance - averageBlockerDistance) / shadow.worldUnitsPerTexel;
+                penumbraRadius = std::tan(shadow.sourceAngularRadiusRadians) *
+                                 (receiverDistance - averageBlockerDistance) /
+                                 shadow.worldUnitsPerTexel;
             }
         }
-        if (!std::isfinite(penumbraRadius))
+        if (!math::IsFinite(penumbraRadius))
         {
             penumbraRadius = maxRadius;
         }
@@ -276,24 +268,24 @@ BuildDirectionalShadowCascades(const Camera& camera, f32 aspect, const math::Vec
 {
     output = DirectionalShadowCascadeSet{};
     const f32 lightLengthSquared = cyber::math::LengthSquared(lightDirection);
-    if (!IsFinite(camera.position) || !std::isfinite(camera.yawRadians) ||
-        !std::isfinite(camera.pitchRadians) || !std::isfinite(camera.fovYRadians) ||
+    if (!IsFinite(camera.position) || !math::IsFinite(camera.yawRadians) ||
+        !math::IsFinite(camera.pitchRadians) || !math::IsFinite(camera.fovYRadians) ||
         camera.fovYRadians <= 0.0f || camera.fovYRadians >= cyber::math::kPi ||
-        !std::isfinite(camera.nearPlane) || !std::isfinite(camera.farPlane) ||
-        camera.nearPlane <= 0.0f || camera.farPlane <= camera.nearPlane || !std::isfinite(aspect) ||
-        aspect <= 0.0f || !IsFinite(lightDirection) || !std::isfinite(lightLengthSquared) ||
-        lightLengthSquared <= 1.0e-12f || config.cascadeCount == 0 ||
-        config.cascadeCount > kMaxDirectionalShadowCascades || config.mapResolution < 8 ||
-        config.mapResolution > 16384 || !std::isfinite(config.shadowDistance) ||
-        config.shadowDistance <= camera.nearPlane || !std::isfinite(config.splitLambda) ||
-        config.splitLambda < 0.0f || config.splitLambda > 1.0f ||
-        !std::isfinite(config.blendFraction) || config.blendFraction < 0.0f ||
-        config.blendFraction > 0.5f || !std::isfinite(config.depthPadding) ||
-        config.depthPadding < 0.0f || !std::isfinite(config.constantDepthBias) ||
-        config.constantDepthBias < 0.0f || !std::isfinite(config.slopeDepthBias) ||
-        config.slopeDepthBias < 0.0f || !std::isfinite(config.normalOffsetBias) ||
-        config.normalOffsetBias < 0.0f ||
-        !std::isfinite(config.sourceAngularRadiusRadians) ||
+        !math::IsFinite(camera.nearPlane) || !math::IsFinite(camera.farPlane) ||
+        camera.nearPlane <= 0.0f || camera.farPlane <= camera.nearPlane ||
+        !math::IsFinite(aspect) || aspect <= 0.0f || !IsFinite(lightDirection) ||
+        !math::IsFinite(lightLengthSquared) || lightLengthSquared <= 1.0e-12f ||
+        config.cascadeCount == 0 || config.cascadeCount > kMaxDirectionalShadowCascades ||
+        config.mapResolution < 8 || config.mapResolution > 16384 ||
+        !math::IsFinite(config.shadowDistance) || config.shadowDistance <= camera.nearPlane ||
+        !math::IsFinite(config.splitLambda) || config.splitLambda < 0.0f ||
+        config.splitLambda > 1.0f || !math::IsFinite(config.blendFraction) ||
+        config.blendFraction < 0.0f || config.blendFraction > 0.5f ||
+        !math::IsFinite(config.depthPadding) || config.depthPadding < 0.0f ||
+        !math::IsFinite(config.constantDepthBias) || config.constantDepthBias < 0.0f ||
+        !math::IsFinite(config.slopeDepthBias) || config.slopeDepthBias < 0.0f ||
+        !math::IsFinite(config.normalOffsetBias) || config.normalOffsetBias < 0.0f ||
+        !math::IsFinite(config.sourceAngularRadiusRadians) ||
         config.sourceAngularRadiusRadians < 0.0f ||
         config.sourceAngularRadiusRadians >= cyber::math::kHalfPi)
     {
@@ -374,7 +366,7 @@ BuildDirectionalShadowCascades(const Camera& camera, f32 aspect, const math::Vec
         radius = std::ceil(radius * 16.0f) / 16.0f;
         radius *=
             static_cast<f32>(config.mapResolution) / static_cast<f32>(config.mapResolution - 2);
-        if (!std::isfinite(radius) || radius <= 0.0f)
+        if (!math::IsFinite(radius) || radius <= 0.0f)
         {
             output = DirectionalShadowCascadeSet{};
             return core::Status<core::Error>::Err(
@@ -426,7 +418,7 @@ u32 GetDirectionalShadowCascadeIndex(const DirectionalShadowCascadeSet& cascades
                                      f32 viewDepth) noexcept
 {
     if (cascades.count == 0 || cascades.count > kMaxDirectionalShadowCascades ||
-        !std::isfinite(viewDepth) || viewDepth < cascades.cascades[0].splitNear)
+        !math::IsFinite(viewDepth) || viewDepth < cascades.cascades[0].splitNear)
     {
         return kMaxDirectionalShadowCascades;
     }
@@ -458,7 +450,7 @@ f32 EvaluateDirectionalShadowVisibility(const DirectionalShadowCascadeSet& casca
                                         const math::Vec3& directionToLight) noexcept
 {
     if (cascades.count == 0 || cascades.count > kMaxDirectionalShadowCascades ||
-        !std::isfinite(viewDepth) || viewDepth < cascades.cascades[0].splitNear)
+        !math::IsFinite(viewDepth) || viewDepth < cascades.cascades[0].splitNear)
     {
         return 1.0f;
     }
@@ -498,15 +490,15 @@ core::Status<core::Error> BuildSpotShadowMap(const math::Vec3& position,
 {
     output = ShadowMapView{};
     const f32 directionLengthSquared = cyber::math::LengthSquared(direction);
-    if (!IsFinite(position) || !IsFinite(direction) || !std::isfinite(directionLengthSquared) ||
-        directionLengthSquared <= 1.0e-12f || !std::isfinite(config.nearPlane) ||
-        !std::isfinite(config.farPlane) || config.nearPlane <= 0.0f ||
-        config.farPlane <= config.nearPlane || !std::isfinite(config.outerConeRadians) ||
+    if (!IsFinite(position) || !IsFinite(direction) || !math::IsFinite(directionLengthSquared) ||
+        directionLengthSquared <= 1.0e-12f || !math::IsFinite(config.nearPlane) ||
+        !math::IsFinite(config.farPlane) || config.nearPlane <= 0.0f ||
+        config.farPlane <= config.nearPlane || !math::IsFinite(config.outerConeRadians) ||
         config.outerConeRadians <= 0.0f || config.outerConeRadians >= cyber::math::kHalfPi ||
-        !std::isfinite(config.constantDepthBias) || config.constantDepthBias < 0.0f ||
-        !std::isfinite(config.slopeDepthBias) || config.slopeDepthBias < 0.0f ||
-        !std::isfinite(config.normalOffsetBias) || config.normalOffsetBias < 0.0f ||
-        !std::isfinite(config.sourceRadius) || config.sourceRadius < 0.0f)
+        !math::IsFinite(config.constantDepthBias) || config.constantDepthBias < 0.0f ||
+        !math::IsFinite(config.slopeDepthBias) || config.slopeDepthBias < 0.0f ||
+        !math::IsFinite(config.normalOffsetBias) || config.normalOffsetBias < 0.0f ||
+        !math::IsFinite(config.sourceRadius) || config.sourceRadius < 0.0f)
     {
         return core::Status<core::Error>::Err(
             core::Error{core::ErrorCode::InvalidArgument, "invalid spot shadow settings"});
@@ -545,12 +537,12 @@ core::Status<core::Error> BuildPointShadowMaps(const math::Vec3& position,
                                                PointShadowMapSet& output) noexcept
 {
     output = PointShadowMapSet{};
-    if (!IsFinite(position) || !std::isfinite(config.nearPlane) ||
-        !std::isfinite(config.farPlane) || config.nearPlane <= 0.0f ||
-        config.farPlane <= config.nearPlane || !std::isfinite(config.constantDepthBias) ||
-        config.constantDepthBias < 0.0f || !std::isfinite(config.slopeDepthBias) ||
-        config.slopeDepthBias < 0.0f || !std::isfinite(config.normalOffsetBias) ||
-        config.normalOffsetBias < 0.0f || !std::isfinite(config.sourceRadius) ||
+    if (!IsFinite(position) || !math::IsFinite(config.nearPlane) ||
+        !math::IsFinite(config.farPlane) || config.nearPlane <= 0.0f ||
+        config.farPlane <= config.nearPlane || !math::IsFinite(config.constantDepthBias) ||
+        config.constantDepthBias < 0.0f || !math::IsFinite(config.slopeDepthBias) ||
+        config.slopeDepthBias < 0.0f || !math::IsFinite(config.normalOffsetBias) ||
+        config.normalOffsetBias < 0.0f || !math::IsFinite(config.sourceRadius) ||
         config.sourceRadius < 0.0f)
     {
         return core::Status<core::Error>::Err(
@@ -615,11 +607,17 @@ u32 SelectShadowCubeFace(const math::Vec3& lightToReceiver) noexcept
 
 f32 EvaluatePointShadowVisibility(const PointShadowMapSet& shadows,
                                   const math::Vec3& lightToReceiver,
-                                  const math::Vec3& worldPosition,
-                                  const math::Vec3& worldNormal,
+                                  const math::Vec3& worldPosition, const math::Vec3& worldNormal,
                                   const math::Vec3& directionToLight) noexcept
 {
-    if (!IsFinite(lightToReceiver))
+    // Most point lights cast no shadow. Every pixel lit by one used to pay for
+    // the face selection and seam weights below before finding no maps.
+    bool anyFace = false;
+    for (const ShadowMapView& face : shadows.faces)
+    {
+        anyFace = anyFace || face.depth != nullptr;
+    }
+    if (!anyFace || !IsFinite(lightToReceiver))
     {
         return 1.0f;
     }
@@ -627,12 +625,11 @@ f32 EvaluatePointShadowVisibility(const PointShadowMapSet& shadows,
     const f32 axes[3] = {std::fabs(lightToReceiver.x), std::fabs(lightToReceiver.y),
                          std::fabs(lightToReceiver.z)};
     const f32 maximumAxis = std::max({axes[0], axes[1], axes[2]});
-    if (maximumAxis <= 1.0e-8f || !std::isfinite(maximumAxis))
+    if (maximumAxis <= 1.0e-8f || !math::IsFinite(maximumAxis))
     {
         return 1.0f;
     }
-    const u32 faces[3] = {lightToReceiver.x >= 0.0f ? 0U : 1U,
-                          lightToReceiver.y >= 0.0f ? 2U : 3U,
+    const u32 faces[3] = {lightToReceiver.x >= 0.0f ? 0U : 1U, lightToReceiver.y >= 0.0f ? 2U : 3U,
                           lightToReceiver.z >= 0.0f ? 4U : 5U};
 
     f32 weightedVisibility = 0.0f;
@@ -679,7 +676,7 @@ core::Status<core::Error> SelectShadowResolution(f32 importance, u32 minimumReso
     output = 0;
     const auto isPowerOfTwo = [](u32 value) noexcept
     { return value != 0 && (value & (value - 1U)) == 0; };
-    if (!std::isfinite(importance) || importance < 0.0f || importance > 1.0f ||
+    if (!math::IsFinite(importance) || importance < 0.0f || importance > 1.0f ||
         minimumResolution < kShadowAtlasTileSize || maximumResolution < minimumResolution ||
         maximumResolution > kShadowAtlasTileSize * 64 || !isPowerOfTwo(minimumResolution) ||
         !isPowerOfTwo(maximumResolution))
@@ -844,14 +841,15 @@ bool ReleaseShadowAtlas(ShadowAtlas& atlas, const ShadowAtlasAllocation& allocat
 
 math::Color ShadowDepthDebugColor(f32 reverseZDepth) noexcept
 {
-    const f32 value = std::isfinite(reverseZDepth) ? std::clamp(reverseZDepth, 0.0f, 1.0f) : 0.0f;
+    const f32 value = math::IsFinite(reverseZDepth) ? std::clamp(reverseZDepth, 0.0f, 1.0f) : 0.0f;
     return math::Color{value, value, value, 1.0f};
 }
 
-core::Status<core::Error>
-RenderShadowMap(const ShadowRenderDesc& desc, cyber::memory::Span<const VertexInput> vertices,
-                DepthBuffer& depth, jobs::JobSystem* jobSystem,
-                cyber::memory::Allocator& allocator, PipelineStats* stats) noexcept
+core::Status<core::Error> RenderShadowMap(const ShadowRenderDesc& desc,
+                                          cyber::memory::Span<const VertexInput> vertices,
+                                          DepthBuffer& depth, jobs::JobSystem* jobSystem,
+                                          cyber::memory::Allocator& allocator,
+                                          PipelineStats* stats) noexcept
 {
     const math::Mat4 modelViewProjection = desc.clipFromWorld * desc.modelToWorld;
     if (!depth.IsValid() || !IsFinite(desc.modelToWorld) || !IsFinite(desc.clipFromWorld) ||
@@ -877,13 +875,11 @@ RenderShadowMap(const ShadowRenderDesc& desc, cyber::memory::Span<const VertexIn
     return DrawDepthOnlyTriangles(shader, vertices, depth, jobSystem, allocator, stats);
 }
 
-core::Status<core::Error>
-RenderDirectionalShadowMaps(DirectionalShadowCascadeSet& cascades,
-                            cyber::memory::Span<const VertexInput> vertices,
-                            cyber::memory::Span<DepthBuffer> depthMaps,
-                            cyber::memory::Allocator& allocator, jobs::JobSystem* jobSystem,
-                            CullMode cullMode, bool useJobs,
-                            cyber::memory::Span<PipelineStats> stats) noexcept
+core::Status<core::Error> RenderDirectionalShadowMaps(
+    DirectionalShadowCascadeSet& cascades, cyber::memory::Span<const VertexInput> vertices,
+    cyber::memory::Span<DepthBuffer> depthMaps, cyber::memory::Allocator& allocator,
+    jobs::JobSystem* jobSystem, CullMode cullMode, bool useJobs,
+    cyber::memory::Span<PipelineStats> stats) noexcept
 {
     const auto Fail = [&stats](const char* message) noexcept
     {
@@ -896,8 +892,7 @@ RenderDirectionalShadowMaps(DirectionalShadowCascadeSet& cascades,
     };
 
     if (cascades.count == 0 || cascades.count > kMaxDirectionalShadowCascades ||
-        depthMaps.Size() < cascades.count ||
-        (!stats.Empty() && stats.Size() < cascades.count) ||
+        depthMaps.Size() < cascades.count || (!stats.Empty() && stats.Size() < cascades.count) ||
         (vertices.Size() != 0 && vertices.Data() == nullptr))
     {
         return Fail("invalid directional cascade render targets or count");
@@ -911,7 +906,7 @@ RenderDirectionalShadowMaps(DirectionalShadowCascadeSet& cascades,
         const DirectionalShadowCascade& cascade = cascades.cascades[index];
         DepthBuffer& depth = depthMaps[index];
         if (!depth.IsValid() || !IsFinite(cascade.shadow.clipFromWorld) ||
-            !std::isfinite(cascade.splitNear) || !std::isfinite(cascade.splitFar) ||
+            !math::IsFinite(cascade.splitNear) || !math::IsFinite(cascade.splitFar) ||
             cascade.splitNear < 0.0f || cascade.splitFar <= cascade.splitNear ||
             (index != 0 && cascade.splitNear < previousSplit))
         {
@@ -942,8 +937,7 @@ RenderDirectionalShadowMaps(DirectionalShadowCascadeSet& cascades,
         render.useJobs = useJobs;
         PipelineStats* cascadeStats = stats.Empty() ? nullptr : &stats[index];
         const core::Status<core::Error> rendered =
-            RenderShadowMap(render, vertices, depthMaps[index], jobSystem, allocator,
-                            cascadeStats);
+            RenderShadowMap(render, vertices, depthMaps[index], jobSystem, allocator, cascadeStats);
         if (!rendered)
         {
             for (u32 reset = index + 1; reset < stats.Size(); ++reset)

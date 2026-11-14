@@ -2,6 +2,7 @@
 
 #include <cyber/math/types.h>
 
+#include <bit>
 #include <cmath>
 
 namespace cyber::math
@@ -74,9 +75,17 @@ inline constexpr f32 kRadiansToDegrees = 180.0f / kPi;
     return std::abs(lhs - rhs) <= tolerance;
 }
 
-[[nodiscard]] inline bool IsFinite(f32 value) noexcept
+// True unless the value is an infinity or a NaN. Tests the exponent bits
+// directly: MSVC lowers std::isfinite to an out-of-line CRT call (_fdtest),
+// which costs a call per test in per-pixel and per-vertex code.
+[[nodiscard]] constexpr bool IsFinite(f32 value) noexcept
 {
-    return std::isfinite(value);
+    return (std::bit_cast<u32>(value) & 0x7F800000u) != 0x7F800000u;
+}
+
+[[nodiscard]] constexpr bool IsFinite(f64 value) noexcept
+{
+    return (std::bit_cast<u64>(value) & 0x7FF0000000000000ull) != 0x7FF0000000000000ull;
 }
 
 }  // namespace cyber::math

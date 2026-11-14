@@ -14,10 +14,10 @@ core::Result<Cubemap, core::Error> CaptureReflectionProbe(const ReflectionProbeC
     if (renderFace == nullptr || desc.faceSize < 1 || desc.faceSize > kMaxCubemapFaceSize ||
         desc.supersampleFactor < kMinSupersampleFactor ||
         desc.supersampleFactor > kMaxSupersampleFactor ||
-        desc.faceSize > 16384 / desc.supersampleFactor ||
-        !std::isfinite(desc.position.x) || !std::isfinite(desc.position.y) ||
-        !std::isfinite(desc.position.z) || !std::isfinite(desc.nearPlane) ||
-        !std::isfinite(desc.farPlane) || desc.nearPlane <= 0.0f || desc.farPlane <= desc.nearPlane)
+        desc.faceSize > 16384 / desc.supersampleFactor || !math::IsFinite(desc.position.x) ||
+        !math::IsFinite(desc.position.y) || !math::IsFinite(desc.position.z) ||
+        !math::IsFinite(desc.nearPlane) || !math::IsFinite(desc.farPlane) ||
+        desc.nearPlane <= 0.0f || desc.farPlane <= desc.nearPlane)
     {
         return ResultType::Err(
             core::Error{core::ErrorCode::InvalidArgument, "invalid reflection probe capture"});

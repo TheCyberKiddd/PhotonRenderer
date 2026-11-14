@@ -14,7 +14,7 @@ constexpr f32 kPi = cyber::math::kPi;
 
 f32 Saturate(f32 value) noexcept
 {
-    if (!std::isfinite(value))
+    if (!math::IsFinite(value))
     {
         return 0.0f;
     }
@@ -23,7 +23,7 @@ f32 Saturate(f32 value) noexcept
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 math::Vec3 Multiply(const math::Vec3& lhs, const math::Vec3& rhs) noexcept
@@ -67,37 +67,38 @@ SkyParameters Validate(const ProceduralSkyConfig& config) noexcept
     {
         return parameters;
     }
-    if (!std::isfinite(config.planetRadiusMeters) || !std::isfinite(config.atmosphereRadiusMeters) ||
-        config.planetRadiusMeters <= 0.0f || config.atmosphereRadiusMeters <= config.planetRadiusMeters)
+    if (!math::IsFinite(config.planetRadiusMeters) ||
+        !math::IsFinite(config.atmosphereRadiusMeters) || config.planetRadiusMeters <= 0.0f ||
+        config.atmosphereRadiusMeters <= config.planetRadiusMeters)
     {
         return parameters;
     }
-    if (!std::isfinite(config.viewAltitudeMeters) || config.viewAltitudeMeters < 0.0f)
+    if (!math::IsFinite(config.viewAltitudeMeters) || config.viewAltitudeMeters < 0.0f)
     {
         return parameters;
     }
-    if (!std::isfinite(config.rayleighScaleHeightMeters) ||
-        config.rayleighScaleHeightMeters <= 0.0f || !std::isfinite(config.mieScaleHeightMeters) ||
+    if (!math::IsFinite(config.rayleighScaleHeightMeters) ||
+        config.rayleighScaleHeightMeters <= 0.0f || !math::IsFinite(config.mieScaleHeightMeters) ||
         config.mieScaleHeightMeters <= 0.0f)
     {
         return parameters;
     }
-    if (config.viewSampleCount < 2 || config.viewSampleCount > 128 ||
-        config.lightSampleCount < 2 || config.lightSampleCount > 64)
+    if (config.viewSampleCount < 2 || config.viewSampleCount > 128 || config.lightSampleCount < 2 ||
+        config.lightSampleCount > 64)
     {
         return parameters;
     }
 
     parameters.sunDirection = cyber::math::Normalize(config.sunDirection);
-    parameters.sunIrradiance = math::Vec3{std::max(0.0f, config.sunIrradiance.x),
-                                          std::max(0.0f, config.sunIrradiance.y),
-                                          std::max(0.0f, config.sunIrradiance.z)};
+    parameters.sunIrradiance =
+        math::Vec3{std::max(0.0f, config.sunIrradiance.x), std::max(0.0f, config.sunIrradiance.y),
+                   std::max(0.0f, config.sunIrradiance.z)};
     parameters.rayleighScattering = math::Vec3{std::max(0.0f, config.rayleighScattering.x),
                                                std::max(0.0f, config.rayleighScattering.y),
                                                std::max(0.0f, config.rayleighScattering.z)};
-    parameters.groundAlbedo = math::Vec3{Saturate(config.groundAlbedo.x),
-                                         Saturate(config.groundAlbedo.y),
-                                         Saturate(config.groundAlbedo.z)};
+    parameters.groundAlbedo =
+        math::Vec3{Saturate(config.groundAlbedo.x), Saturate(config.groundAlbedo.y),
+                   Saturate(config.groundAlbedo.z)};
     parameters.mieScattering = std::max(0.0f, config.mieScattering);
     parameters.mieExtinction = std::max(parameters.mieScattering, config.mieExtinction);
     parameters.mieAnisotropy = std::clamp(config.mieAnisotropy, -0.9f, 0.9f);
@@ -105,10 +106,9 @@ SkyParameters Validate(const ProceduralSkyConfig& config) noexcept
     parameters.mieScaleHeight = config.mieScaleHeightMeters;
     parameters.planetRadius = config.planetRadiusMeters;
     parameters.atmosphereRadius = config.atmosphereRadiusMeters;
-    parameters.viewRadius =
-        std::min(config.planetRadiusMeters + config.viewAltitudeMeters, config.atmosphereRadiusMeters);
-    parameters.sunCosineRadius =
-        std::cos(std::clamp(config.sunAngularRadiusRadians, 0.0f, 0.1f));
+    parameters.viewRadius = std::min(config.planetRadiusMeters + config.viewAltitudeMeters,
+                                     config.atmosphereRadiusMeters);
+    parameters.sunCosineRadius = std::cos(std::clamp(config.sunAngularRadiusRadians, 0.0f, 0.1f));
     parameters.viewSamples = config.viewSampleCount;
     parameters.lightSamples = config.lightSampleCount;
     parameters.includeSunDisk = config.includeSunDisk;
@@ -162,8 +162,7 @@ bool SunOpticalDepth(const SkyParameters& parameters, const math::Vec3& position
     const f32 step = top / static_cast<f32>(parameters.lightSamples);
     for (u32 index = 0; index < parameters.lightSamples; ++index)
     {
-        const math::Vec3 sample =
-            position + toSun * (step * (static_cast<f32>(index) + 0.5f));
+        const math::Vec3 sample = position + toSun * (step * (static_cast<f32>(index) + 0.5f));
         const f32 altitude = Altitude(parameters, sample);
         rayleighDepth += std::exp(-altitude / parameters.rayleighScaleHeight) * step;
         mieDepth += std::exp(-altitude / parameters.mieScaleHeight) * step;
@@ -171,8 +170,7 @@ bool SunOpticalDepth(const SkyParameters& parameters, const math::Vec3& position
     return true;
 }
 
-math::Vec3 Transmittance(const SkyParameters& parameters, f32 rayleighDepth,
-                         f32 mieDepth) noexcept
+math::Vec3 Transmittance(const SkyParameters& parameters, f32 rayleighDepth, f32 mieDepth) noexcept
 {
     const math::Vec3 extinction =
         parameters.rayleighScattering * rayleighDepth +
@@ -245,9 +243,8 @@ math::Vec3 Scatter(const SkyParameters& parameters, const math::Vec3& viewDirect
             math::Vec3{parameters.mieScattering, parameters.mieScattering,
                        parameters.mieScattering} *
                 (mieDensity * miePhase);
-        radiance = radiance + Multiply(Multiply(inScatter, transmittance),
-                                       parameters.sunIrradiance) *
-                                  step;
+        radiance = radiance +
+                   Multiply(Multiply(inScatter, transmittance), parameters.sunIrradiance) * step;
     }
 
     if (hitsGround)
@@ -259,9 +256,8 @@ math::Vec3 Scatter(const SkyParameters& parameters, const math::Vec3& viewDirect
         if (SunOpticalDepth(parameters, groundPoint, toSun, sunRayleighDepth, sunMieDepth))
         {
             const f32 ndotl = std::max(0.0f, cyber::math::Dot(groundNormal, toSun));
-            const math::Vec3 sunAtGround =
-                Multiply(Transmittance(parameters, sunRayleighDepth, sunMieDepth),
-                         parameters.sunIrradiance);
+            const math::Vec3 sunAtGround = Multiply(
+                Transmittance(parameters, sunRayleighDepth, sunMieDepth), parameters.sunIrradiance);
             const math::Vec3 groundRadiance =
                 Multiply(parameters.groundAlbedo, sunAtGround) * (ndotl / kPi);
             radiance =
@@ -343,8 +339,7 @@ math::Vec3 EvaluateSunTransmittance(const ProceduralSkyConfig& config) noexcept
     {
         return math::Vec3::Zero();
     }
-    return Multiply(parameters.sunIrradiance,
-                    Transmittance(parameters, rayleighDepth, mieDepth));
+    return Multiply(parameters.sunIrradiance, Transmittance(parameters, rayleighDepth, mieDepth));
 }
 
 core::Status<core::Error> RenderProceduralSkyCubemap(const ProceduralSkyConfig& config,

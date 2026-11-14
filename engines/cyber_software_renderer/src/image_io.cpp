@@ -406,7 +406,7 @@ bool ParseHdrFloat(const char*& text, f32& value) noexcept
     }
     char* end = nullptr;
     const f32 parsed = std::strtof(text, &end);
-    if (end == text || !std::isfinite(parsed))
+    if (end == text || !math::IsFinite(parsed))
     {
         return false;
     }
@@ -536,7 +536,7 @@ FramebufferResult ReadRadianceHdr(const ByteCursor& input, memory::Allocator& al
                 ++valueText;
             }
             exposure *= value;
-            if (*valueText != '\0' || !std::isfinite(exposure))
+            if (*valueText != '\0' || !math::IsFinite(exposure))
             {
                 return FramebufferResult::Err(
                     core::Error{core::ErrorCode::InvalidArgument, "invalid Radiance HDR exposure"});
@@ -566,8 +566,8 @@ FramebufferResult ReadRadianceHdr(const ByteCursor& input, memory::Allocator& al
             {
                 colorCorrection[channel] *= values[channel];
             }
-            if (!std::isfinite(colorCorrection[0]) || !std::isfinite(colorCorrection[1]) ||
-                !std::isfinite(colorCorrection[2]))
+            if (!math::IsFinite(colorCorrection[0]) || !math::IsFinite(colorCorrection[1]) ||
+                !math::IsFinite(colorCorrection[2]))
             {
                 return FramebufferResult::Err(core::Error{core::ErrorCode::InvalidArgument,
                                                           "invalid Radiance HDR color correction"});
@@ -649,7 +649,7 @@ FramebufferResult ReadRadianceHdr(const ByteCursor& input, memory::Allocator& al
             const f32 blue =
                 DecodeRgbeChannel(scanline.Data()[2u * scanlineLength + pixel], exponent) *
                 exposure * colorCorrection[2];
-            if (!std::isfinite(red) || !std::isfinite(green) || !std::isfinite(blue))
+            if (!math::IsFinite(red) || !math::IsFinite(green) || !math::IsFinite(blue))
             {
                 return FramebufferResult::Err(core::Error{core::ErrorCode::InvalidArgument,
                                                           "Radiance HDR radiance overflows"});

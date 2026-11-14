@@ -14,18 +14,18 @@ namespace
 
 bool IsFinite(const math::Vec3& value) noexcept
 {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    return math::IsFinite(value.x) && math::IsFinite(value.y) && math::IsFinite(value.z);
 }
 
 bool IsFinite(const ShadowProbe& probe) noexcept
 {
     return IsFinite(probe.worldPosition) && IsFinite(probe.worldNormal) &&
-           IsFinite(probe.directionToLight) && std::isfinite(probe.viewDepth);
+           IsFinite(probe.directionToLight) && math::IsFinite(probe.viewDepth);
 }
 
 bool IsValidThreshold(f32 threshold) noexcept
 {
-    return std::isfinite(threshold) && threshold > 0.0f && threshold <= 1.0f;
+    return math::IsFinite(threshold) && threshold > 0.0f && threshold <= 1.0f;
 }
 
 core::Status<core::Error> Invalid(const char* message) noexcept
@@ -115,7 +115,7 @@ core::Status<core::Error> MeasureShadowContact(const DirectionalShadowCascadeSet
     {
         return Invalid("shadow contact measurement needs at least one sample");
     }
-    if (!std::isfinite(stepDistance) || !(stepDistance > 0.0f))
+    if (!math::IsFinite(stepDistance) || !(stepDistance > 0.0f))
     {
         return Invalid("shadow contact step distance must be finite and positive");
     }
@@ -128,7 +128,7 @@ core::Status<core::Error> MeasureShadowContact(const DirectionalShadowCascadeSet
         return Invalid("shadow contact probe or direction is not finite");
     }
     const f32 directionLength = math::Length(direction);
-    if (!std::isfinite(directionLength) || !(directionLength > 0.0f))
+    if (!math::IsFinite(directionLength) || !(directionLength > 0.0f))
     {
         return Invalid("shadow contact direction is degenerate");
     }
@@ -235,7 +235,7 @@ core::Status<core::Error> MeasureShadowStability(cyber::memory::Span<const f32> 
     }
     for (cyber::core::usize index = 0; index < visibilitySequence.Size(); ++index)
     {
-        if (!std::isfinite(visibilitySequence[index]))
+        if (!math::IsFinite(visibilitySequence[index]))
         {
             return Invalid("shadow stability sample is not finite");
         }
@@ -259,8 +259,7 @@ core::Status<core::Error> MeasureShadowStability(cyber::memory::Span<const f32> 
                 static_cast<cyber::core::usize>(frame) * probeCount + probe;
             const cyber::core::usize previous =
                 static_cast<cyber::core::usize>(frame - 1) * probeCount + probe;
-            const f32 delta =
-                std::fabs(visibilitySequence[current] - visibilitySequence[previous]);
+            const f32 delta = std::fabs(visibilitySequence[current] - visibilitySequence[previous]);
             total += static_cast<cyber::core::f64>(delta);
             variation += static_cast<cyber::core::f64>(delta);
             if (delta > output.maxFrameDelta)

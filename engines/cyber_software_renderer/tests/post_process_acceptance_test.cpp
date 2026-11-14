@@ -98,7 +98,8 @@ constexpr f32 kScrollPixelsPerFrame = 3.0f;
 
 // One sample per pixel at the frame's jitter offset: what the renderer
 // actually produces for a temporally anti-aliased frame.
-void RenderJittered(Framebuffer& out, f32 scroll, const Vec2& jitter, bool thinLines = true) noexcept
+void RenderJittered(Framebuffer& out, f32 scroll, const Vec2& jitter,
+                    bool thinLines = true) noexcept
 {
     for (i32 y = 0; y < out.Height(); ++y)
     {
@@ -124,16 +125,15 @@ void RenderReference(Framebuffer& out, f32 scroll, bool thinLines = true) noexce
             {
                 for (i32 subX = 0; subX < kReferenceFactor; ++subX)
                 {
-                    const f32 sampleX = static_cast<f32>(x) +
-                                        (static_cast<f32>(subX) + 0.5f) * step + scroll;
+                    const f32 sampleX =
+                        static_cast<f32>(x) + (static_cast<f32>(subX) + 0.5f) * step + scroll;
                     const f32 sampleY =
                         static_cast<f32>(y) + (static_cast<f32>(subY) + 0.5f) * step;
                     const Color sample = SceneColor(sampleX, sampleY, thinLines);
                     sum = Color{sum.r + sample.r, sum.g + sample.g, sum.b + sample.b, 1.0f};
                 }
             }
-            const f32 inverse =
-                1.0f / static_cast<f32>(kReferenceFactor * kReferenceFactor);
+            const f32 inverse = 1.0f / static_cast<f32>(kReferenceFactor * kReferenceFactor);
             out.SetPixel(x, y, Color{sum.r * inverse, sum.g * inverse, sum.b * inverse, 1.0f});
         }
     }
@@ -159,7 +159,8 @@ struct GhostingRun
     Framebuffer resolved;
     Framebuffer current;
     Framebuffer previous;
-    if (!MakeImage(heap, jittered, kWidth, kHeight) || !MakeImage(heap, velocity, kWidth, kHeight) ||
+    if (!MakeImage(heap, jittered, kWidth, kHeight) ||
+        !MakeImage(heap, velocity, kWidth, kHeight) ||
         !MakeImage(heap, resolved, kWidth, kHeight) || !MakeImage(heap, current, kWidth, kHeight) ||
         !MakeImage(heap, previous, kWidth, kHeight))
     {
@@ -256,7 +257,8 @@ CG_TEST(EveryEffectTogglesAtRuntimeAndReportsItsTime)
     inputs.velocity = &velocity;
 
     auto lutCreated = ColorGradeLut::Bake(
-        [] {
+        []
+        {
             ColorGradeSettings settings{};
             settings.contrast = 1.25f;
             settings.saturation = 0.85f;
@@ -287,8 +289,7 @@ CG_TEST(EveryEffectTogglesAtRuntimeAndReportsItsTime)
     view.farPlane = kFar;
 
     PostProcessTimings timings{};
-    CG_REQUIRE(
-        stack.Execute(inputs, reference, all, view, 1.0f / 60.0f, nullptr, &timings).IsOk());
+    CG_REQUIRE(stack.Execute(inputs, reference, all, view, 1.0f / 60.0f, nullptr, &timings).IsOk());
 
     cyber::core::u64 summed = 0;
     for (const PassTiming& timing : timings.passes)
@@ -341,7 +342,8 @@ CG_TEST(EveryEffectTogglesAtRuntimeAndReportsItsTime)
         CG_EXPECT_EQ(timing.nanoseconds, 0u);
 
         ImageDifferenceMetrics difference{};
-        CG_REQUIRE(MeasureImageDifference(destination, reference, 1.0f / 255.0f, difference).IsOk());
+        CG_REQUIRE(
+            MeasureImageDifference(destination, reference, 1.0f / 255.0f, difference).IsOk());
         std::printf("[phase30] toggle %-18s off: mean %.6f, differing %.4f\n",
                     PostProcessPassName(toggle.pass),
                     static_cast<double>(difference.meanAbsoluteError),
@@ -572,8 +574,8 @@ CG_TEST(TemporalAntiAliasingIsStableOnAStillCamera)
 
     TemporalStabilityMetrics stable{};
     TemporalStabilityMetrics control{};
-    CG_REQUIRE(MeasureTemporalStability(Span<const Framebuffer* const>{resolvedFrames, 6}, stable)
-                   .IsOk());
+    CG_REQUIRE(
+        MeasureTemporalStability(Span<const Framebuffer* const>{resolvedFrames, 6}, stable).IsOk());
     CG_REQUIRE(
         MeasureTemporalStability(Span<const Framebuffer* const>{rawFrames, 6}, control).IsOk());
 
@@ -609,7 +611,8 @@ CG_TEST(TemporalAntiAliasingRemovesTheStaircaseItWasGivenToRemove)
     for (i32 frame = 0; frame < 32; ++frame)
     {
         RenderJittered(jittered, 0.0f, TemporalJitterOffset(static_cast<u32>(frame)));
-        CG_REQUIRE(resolver.Resolve(jittered, nullptr, resolved, settings, nullptr, nullptr).IsOk());
+        CG_REQUIRE(
+            resolver.Resolve(jittered, nullptr, resolved, settings, nullptr, nullptr).IsOk());
     }
     RenderReference(reference, 0.0f);
 
@@ -667,8 +670,8 @@ CG_TEST(TemporalAntiAliasingRemovesTheStaircaseItWasGivenToRemove)
     EdgeAliasingMetrics strictEdges{};
     ImageDifferenceMetrics strictAgainstTruth{};
     CG_REQUIRE(MeasureEdgeAliasing(strictResolved, 0.25f, strictEdges).IsOk());
-    CG_REQUIRE(
-        MeasureImageDifference(strictResolved, reference, 1.0f / 255.0f, strictAgainstTruth).IsOk());
+    CG_REQUIRE(MeasureImageDifference(strictResolved, reference, 1.0f / 255.0f, strictAgainstTruth)
+                   .IsOk());
     std::printf("[phase30] strict clamp control: error %.6f, edges %.6f\n",
                 static_cast<double>(strictAgainstTruth.meanAbsoluteError),
                 static_cast<double>(strictEdges.hardStepFraction));

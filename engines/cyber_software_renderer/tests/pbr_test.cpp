@@ -326,14 +326,12 @@ CG_TEST(software_pbr_fog_scattering_respects_directional_shadow_maps)
     Varyings surface = MakeSurface();
     surface.worldPosition = Vec3{0.0f, 0.0f, 0.5f};
     CG_EXPECT_NEAR(EvaluateShadowVisibility(lighting.directional[0].shadow, Vec3{0.0f, 0.0f, 0.25f},
-                                            Vec3{0.0f, 0.0f, 1.0f},
-                                            Vec3{0.0f, 0.0f, 1.0f}),
+                                            Vec3{0.0f, 0.0f, 1.0f}, Vec3{0.0f, 0.0f, 1.0f}),
                    1.0f, 1.0e-6f);
     const Color illuminatedFog = PbrPixelShader(surface, &lighting);
     depth.Clear(1.0f);
     CG_EXPECT_NEAR(EvaluateShadowVisibility(lighting.directional[0].shadow, Vec3{0.0f, 0.0f, 0.25f},
-                                            Vec3{0.0f, 0.0f, 1.0f},
-                                            Vec3{0.0f, 0.0f, 1.0f}),
+                                            Vec3{0.0f, 0.0f, 1.0f}, Vec3{0.0f, 0.0f, 1.0f}),
                    0.0f, 1.0e-6f);
     const Color shadowedFog = PbrPixelShader(surface, &lighting);
     CG_EXPECT_TRUE(illuminatedFog.r > 0.05f);

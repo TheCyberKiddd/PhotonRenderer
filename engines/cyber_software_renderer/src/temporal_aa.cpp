@@ -1,7 +1,6 @@
-#include <cyber/software/temporal_aa.h>
-
 #include <cyber/jobs/job_system.h>
 #include <cyber/software/post_process.h>
+#include <cyber/software/temporal_aa.h>
 
 #include <algorithm>
 #include <atomic>
@@ -27,7 +26,7 @@ using Status = core::Status<Error>;
 
 [[nodiscard]] f32 SafeFinite(f32 value, f32 fallback = 0.0f) noexcept
 {
-    return std::isfinite(value) ? value : fallback;
+    return math::IsFinite(value) ? value : fallback;
 }
 
 // YCoCg is the usual working space for a neighborhood clamp: it separates
@@ -168,10 +167,9 @@ void TemporalRow(void* userData, u32 index) noexcept
         const YCoCg mean{sum.y * inverseCount, sum.co * inverseCount, sum.cg * inverseCount};
         const YCoCg meanSquared{sumSquared.y * inverseCount, sumSquared.co * inverseCount,
                                 sumSquared.cg * inverseCount};
-        const YCoCg deviation{
-            std::sqrt(std::max(0.0f, meanSquared.y - mean.y * mean.y)),
-            std::sqrt(std::max(0.0f, meanSquared.co - mean.co * mean.co)),
-            std::sqrt(std::max(0.0f, meanSquared.cg - mean.cg * mean.cg))};
+        const YCoCg deviation{std::sqrt(std::max(0.0f, meanSquared.y - mean.y * mean.y)),
+                              std::sqrt(std::max(0.0f, meanSquared.co - mean.co * mean.co)),
+                              std::sqrt(std::max(0.0f, meanSquared.cg - mean.cg * mean.cg))};
 
         f32 velocityX = 0.0f;
         f32 velocityY = 0.0f;
@@ -197,14 +195,13 @@ void TemporalRow(void* userData, u32 index) noexcept
         bool depthRejected = false;
         if (context.testDepth)
         {
-            currentDistance = LinearizeReverseZ(context.depth->Get(x, y), context.nearPlane,
-                                                context.farPlane);
+            currentDistance =
+                LinearizeReverseZ(context.depth->Get(x, y), context.nearPlane, context.farPlane);
         }
         if (context.testDepth && !offScreen)
         {
-            const f32 historyDistance =
-                SafeFinite(SampleBilinearClamped(*context.depthHistory, sourceX, sourceY).r,
-                           context.farPlane);
+            const f32 historyDistance = SafeFinite(
+                SampleBilinearClamped(*context.depthHistory, sourceX, sourceY).r, context.farPlane);
             // The tolerance is a fraction of the distance, because depth
             // precision and the parallax a frame of motion produces both scale
             // with it.
@@ -226,8 +223,7 @@ void TemporalRow(void* userData, u32 index) noexcept
             }
             if (context.testDepth)
             {
-                context.nextDepthHistory->SetPixel(
-                    x, y, Color{currentDistance, 0.0f, 0.0f, 0.0f});
+                context.nextDepthHistory->SetPixel(x, y, Color{currentDistance, 0.0f, 0.0f, 0.0f});
             }
             context.destination->SetPixel(x, y, current);
             // History that was dropped says nothing about how this pixel has
@@ -251,8 +247,7 @@ void TemporalRow(void* userData, u32 index) noexcept
         // folded in, so the frame a cut arrives on is judged by the pixel's
         // record before the cut, which is what makes the cut rejectable.
         const Color priorSigned = SampleBilinearClamped(*context.signedDrift, sourceX, sourceY);
-        const Color priorAbsolute =
-            SampleBilinearClamped(*context.absoluteDrift, sourceX, sourceY);
+        const Color priorAbsolute = SampleBilinearClamped(*context.absoluteDrift, sourceX, sourceY);
 
         if (context.clampHistory)
         {
@@ -275,16 +270,15 @@ void TemporalRow(void* userData, u32 index) noexcept
             // widens nothing; sub-pixel flicker is all amplitude.
             if (context.flickerRelaxation > 0.0f)
             {
-                const f32 amplitude[3] = {
-                    std::max(0.0f, std::abs(SafeFinite(priorAbsolute.r)) -
-                                       std::abs(SafeFinite(priorSigned.r))) *
-                        context.flickerRelaxation,
-                    std::max(0.0f, std::abs(SafeFinite(priorAbsolute.g)) -
-                                       std::abs(SafeFinite(priorSigned.g))) *
-                        context.flickerRelaxation,
-                    std::max(0.0f, std::abs(SafeFinite(priorAbsolute.b)) -
-                                       std::abs(SafeFinite(priorSigned.b))) *
-                        context.flickerRelaxation};
+                const f32 amplitude[3] = {std::max(0.0f, std::abs(SafeFinite(priorAbsolute.r)) -
+                                                             std::abs(SafeFinite(priorSigned.r))) *
+                                              context.flickerRelaxation,
+                                          std::max(0.0f, std::abs(SafeFinite(priorAbsolute.g)) -
+                                                             std::abs(SafeFinite(priorSigned.g))) *
+                                              context.flickerRelaxation,
+                                          std::max(0.0f, std::abs(SafeFinite(priorAbsolute.b)) -
+                                                             std::abs(SafeFinite(priorSigned.b))) *
+                                              context.flickerRelaxation};
                 if (amplitude[0] > 0.0f || amplitude[1] > 0.0f || amplitude[2] > 0.0f)
                 {
                     low.y -= amplitude[0];
@@ -326,10 +320,11 @@ void TemporalRow(void* userData, u32 index) noexcept
                                    currentYCoCg.cg - rawHistoryYCoCg.cg};
         context.nextSignedDrift->SetPixel(
             x, y,
-            Color{SafeFinite(priorSigned.r) + (difference[0] - SafeFinite(priorSigned.r)) * driftRate,
-                  SafeFinite(priorSigned.g) + (difference[1] - SafeFinite(priorSigned.g)) * driftRate,
-                  SafeFinite(priorSigned.b) + (difference[2] - SafeFinite(priorSigned.b)) * driftRate,
-                  0.0f});
+            Color{
+                SafeFinite(priorSigned.r) + (difference[0] - SafeFinite(priorSigned.r)) * driftRate,
+                SafeFinite(priorSigned.g) + (difference[1] - SafeFinite(priorSigned.g)) * driftRate,
+                SafeFinite(priorSigned.b) + (difference[2] - SafeFinite(priorSigned.b)) * driftRate,
+                0.0f});
         context.nextAbsoluteDrift->SetPixel(
             x, y,
             Color{SafeFinite(priorAbsolute.r) +
@@ -384,8 +379,7 @@ struct FxaaContext
     i32 height = 0;
 };
 
-[[nodiscard]] f32 SampleLuma(const Framebuffer& image, i32 x, i32 y, i32 width,
-                             i32 height) noexcept
+[[nodiscard]] f32 SampleLuma(const Framebuffer& image, i32 x, i32 y, i32 width, i32 height) noexcept
 {
     const i32 clampedX = std::clamp(x, 0, width - 1);
     const i32 clampedY = std::clamp(y, 0, height - 1);
@@ -450,8 +444,7 @@ void FxaaRow(void* userData, u32 index) noexcept
         // pixel. Without this search the filter can only soften a step
         // slightly; with it, the staircase becomes a ramp.
         const f32 edgeLuma = 0.5f * (center + (steeperPositive ? positive : negative));
-        const f32 gradientThreshold =
-            0.25f * std::max(gradientNegative, gradientPositive);
+        const f32 gradientThreshold = 0.25f * std::max(gradientNegative, gradientPositive);
         const i32 alongX = horizontalEdge ? 1 : 0;
         const i32 alongY = horizontalEdge ? 0 : 1;
 
@@ -466,11 +459,10 @@ void FxaaRow(void* userData, u32 index) noexcept
             {
                 // The luma of the edge itself, sampled between the two rows or
                 // columns it separates.
-                const f32 sampleCenter =
-                    SampleLuma(*context.source, x - alongX * step, y - alongY * step, width, height);
-                const f32 sampleSide =
-                    SampleLuma(*context.source, x - alongX * step + stepX,
-                               y - alongY * step + stepY, width, height);
+                const f32 sampleCenter = SampleLuma(*context.source, x - alongX * step,
+                                                    y - alongY * step, width, height);
+                const f32 sampleSide = SampleLuma(*context.source, x - alongX * step + stepX,
+                                                  y - alongY * step + stepY, width, height);
                 const f32 along = 0.5f * (sampleCenter + sampleSide);
                 if (std::abs(along - edgeLuma) >= gradientThreshold)
                 {
@@ -480,11 +472,10 @@ void FxaaRow(void* userData, u32 index) noexcept
             }
             if (!foundPositive)
             {
-                const f32 sampleCenter =
-                    SampleLuma(*context.source, x + alongX * step, y + alongY * step, width, height);
-                const f32 sampleSide =
-                    SampleLuma(*context.source, x + alongX * step + stepX,
-                               y + alongY * step + stepY, width, height);
+                const f32 sampleCenter = SampleLuma(*context.source, x + alongX * step,
+                                                    y + alongY * step, width, height);
+                const f32 sampleSide = SampleLuma(*context.source, x + alongX * step + stepX,
+                                                  y + alongY * step + stepY, width, height);
                 const f32 along = 0.5f * (sampleCenter + sampleSide);
                 if (std::abs(along - edgeLuma) >= gradientThreshold)
                 {
@@ -505,11 +496,11 @@ void FxaaRow(void* userData, u32 index) noexcept
         // Sub-pixel term: how far the center sits from its local average,
         // relative to the local contrast. It catches the single-pixel features
         // an edge walk cannot see.
-        const f32 average = (2.0f * (north + south + west + east) + northWest + northEast +
-                             southWest + southEast) /
-                            12.0f;
-        const f32 subpixel = std::clamp(std::abs(average - center) / std::max(1.0e-5f, contrast),
-                                        0.0f, 1.0f);
+        const f32 average =
+            (2.0f * (north + south + west + east) + northWest + northEast + southWest + southEast) /
+            12.0f;
+        const f32 subpixel =
+            std::clamp(std::abs(average - center) / std::max(1.0e-5f, contrast), 0.0f, 1.0f);
         const f32 smoothed = subpixel * subpixel * (3.0f - 2.0f * subpixel);
         const f32 subpixelAmount = smoothed * smoothed * context.subpixelBlend;
 
@@ -520,11 +511,11 @@ void FxaaRow(void* userData, u32 index) noexcept
         const Color centerColor = context.source->GetPixel(x, y);
         const Color neighbor = context.source->GetPixel(std::clamp(x + stepX, 0, width - 1),
                                                         std::clamp(y + stepY, 0, height - 1));
-        context.destination->SetPixel(
-            x, y,
-            Color{centerColor.r + (neighbor.r - centerColor.r) * blend,
-                  centerColor.g + (neighbor.g - centerColor.g) * blend,
-                  centerColor.b + (neighbor.b - centerColor.b) * blend, centerColor.a});
+        context.destination->SetPixel(x, y,
+                                      Color{centerColor.r + (neighbor.r - centerColor.r) * blend,
+                                            centerColor.g + (neighbor.g - centerColor.g) * blend,
+                                            centerColor.b + (neighbor.b - centerColor.b) * blend,
+                                            centerColor.a});
     }
 }
 
@@ -613,8 +604,8 @@ math::Vec2 TemporalJitterOffset(u32 frameIndex, i32 phaseCount) noexcept
 math::Mat4 ApplyJitterToProjection(const math::Mat4& projection, const math::Vec2& offsetPixels,
                                    i32 width, i32 height) noexcept
 {
-    if (width <= 0 || height <= 0 || !std::isfinite(offsetPixels.x) ||
-        !std::isfinite(offsetPixels.y))
+    if (width <= 0 || height <= 0 || !math::IsFinite(offsetPixels.x) ||
+        !math::IsFinite(offsetPixels.y))
     {
         return projection;
     }
@@ -637,8 +628,8 @@ math::Mat4 ApplyJitterToProjection(const math::Mat4& projection, const math::Vec
     return jittered;
 }
 
-core::Result<TemporalAaResolver, Error> TemporalAaResolver::Create(
-    i32 width, i32 height, memory::Allocator& allocator) noexcept
+core::Result<TemporalAaResolver, Error>
+TemporalAaResolver::Create(i32 width, i32 height, memory::Allocator& allocator) noexcept
 {
     using Created = core::Result<TemporalAaResolver, Error>;
 
@@ -755,7 +746,7 @@ Status TemporalAaResolver::Resolve(const TemporalAaInputs& inputs, Framebuffer& 
     {
         return InvalidArgument("temporal resolve cannot be in place");
     }
-    if (!std::isfinite(settings.historyWeight) || settings.historyWeight < 0.0f ||
+    if (!math::IsFinite(settings.historyWeight) || settings.historyWeight < 0.0f ||
         settings.historyWeight >= 1.0f)
     {
         return InvalidArgument("history weight must be in [0, 1)");
@@ -765,8 +756,7 @@ Status TemporalAaResolver::Resolve(const TemporalAaInputs& inputs, Framebuffer& 
     {
         return InvalidArgument("velocity buffer does not match the resolver size");
     }
-    if (inputs.depth != nullptr && (!inputs.depth->IsValid() ||
-                                    inputs.depth->Width() != m_width ||
+    if (inputs.depth != nullptr && (!inputs.depth->IsValid() || inputs.depth->Width() != m_width ||
                                     inputs.depth->Height() != m_height))
     {
         return InvalidArgument("depth buffer does not match the resolver size");
@@ -828,8 +818,7 @@ Status TemporalAaResolver::Resolve(const TemporalAaInputs& inputs, Framebuffer& 
     context.depthHistory = &m_depthHistory[m_driftIndex];
     context.nextDepthHistory = &m_depthHistory[nextDriftIndex];
     context.testDepth = testDepth;
-    context.depthRejectRelative =
-        std::max(0.0f, SafeFinite(settings.depthRejectRelative, 0.03f));
+    context.depthRejectRelative = std::max(0.0f, SafeFinite(settings.depthRejectRelative, 0.03f));
     context.nearPlane = settings.nearPlane;
     context.farPlane = settings.farPlane;
     context.destination = &destination;

@@ -1,6 +1,7 @@
 #include <cyber/assets/asset.h>
 #include <cyber/assets/asset_database.h>
 #include <cyber/assets/asset_library.h>
+#include <cyber/assets/bc_codec.h>
 #include <cyber/assets/cooked.h>
 #include <cyber/assets/gltf.h>
 #include <cyber/assets/image.h>

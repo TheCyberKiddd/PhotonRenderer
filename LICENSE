@@ -1,40 +1,52 @@
-<<<<<<< HEAD
-Copyright (c) 2026 CyberEngine. All rights reserved.
+Cyber License
+Copyright (c) Cyber Labs
 
-This software and its associated documentation files (the "Software") are
-proprietary and confidential. No part of the Software may be copied, modified,
-merged, published, distributed, sublicensed, sold, or used to create derivative
-works without the prior written permission of CyberEngine.
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files
+(the "Software"), to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons
+to whom the Software is furnished to do so, subject to the following
+conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-CYBERENGINE BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
-ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+1. Attribution
+Any copy, modification, distribution, or derivative work that includes
+a substantial portion of the Software must include clear credit to the
+original project:
 
-These terms are a placeholder for the final commercial license and will be
-reviewed before the public release described in the roadmap (Phase 43).
-=======
-MIT License
+   "Photon Renderer, made by Cyber Labs"
+   or
+   "Cyber Engine, made by Cyber Labs"
 
-Copyright (c) 2026 The_CyberKid
+Credit is not required solely for taking inspiration from the ideas,
+design, architecture, or features of the Software.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+2. License and Copyright Notice
+The above copyright notice, this attribution requirement, and this
+license text must be included in all copies or substantial portions
+of the Software.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+3. No Endorsement
+The names "Photon Renderer", "Cyber Engine", and "Cyber Labs" may not
+be used to promote or endorse derivative products without prior
+written permission.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
->>>>>>> photonrenderer/main
+4. No Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITH ALL FAULTS AND WITHOUT
+WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, ACCURACY, AND NON-INFRINGEMENT.
+
+5. Limitation of Liability
+IN NO EVENT SHALL CYBER LABS OR THE AUTHORS BE LIABLE FOR ANY CLAIM,
+DAMAGES, BUGS, ERRORS, DATA LOSS, SECURITY ISSUES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+6. Bugs and Issues
+Bugs, crashes, errors, and unexpected behavior may occur. Users are
+responsible for testing the Software before using it in any important
+project. Cyber Labs is not responsible for damage, loss, or problems
+caused by the Software.
+
+For permission requests or questions, open an issue at:
+https://github.com/TheCyberKiddd/PhotonRenderer/issues

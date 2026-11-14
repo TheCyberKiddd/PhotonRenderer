@@ -113,16 +113,15 @@ bool PushSmoothTriangle(DynamicArray<VertexInput>& mesh, const Vec3& a, const Ve
 bool PushQuad(DynamicArray<VertexInput>& mesh, const Vec3& a, const Vec3& b, const Vec3& c,
               const Vec3& d, const Vec3& normal, const Color& color)
 {
-    return PushTriangle(mesh, a, b, c, normal, color) &&
-           PushTriangle(mesh, a, c, d, normal, color);
+    return PushTriangle(mesh, a, b, c, normal, color) && PushTriangle(mesh, a, c, d, normal, color);
 }
 
 bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& halfExtents,
             const Color& color, f32 rotationY = 0.0f);
 
 bool PushTexturedQuad(DynamicArray<VertexInput>& mesh, const Vec3& a, const Vec2& uvA,
-                      const Vec3& b, const Vec2& uvB, const Vec3& c, const Vec2& uvC,
-                      const Vec3& d, const Vec2& uvD, const Vec3& normal, const Color& color)
+                      const Vec3& b, const Vec2& uvB, const Vec3& c, const Vec2& uvC, const Vec3& d,
+                      const Vec2& uvD, const Vec3& normal, const Color& color)
 {
     const auto push = [&](const Vec3& position, const Vec2& uv)
     {
@@ -150,12 +149,12 @@ bool BuildPlatform(DynamicArray<VertexInput>& mesh)
         return false;
     }
 
-    return PushTexturedQuad(
-        mesh, Vec3{centerX - halfWidth, top, centerZ - halfDepth}, Vec2{0.0f, 0.0f},
-        Vec3{centerX - halfWidth, top, centerZ + halfDepth}, Vec2{0.0f, 3.0f},
-        Vec3{centerX + halfWidth, top, centerZ + halfDepth}, Vec2{4.0f, 3.0f},
-        Vec3{centerX + halfWidth, top, centerZ - halfDepth}, Vec2{4.0f, 0.0f},
-        Vec3{0.0f, 1.0f, 0.0f}, Color{1.0f, 1.0f, 1.0f, 1.0f});
+    return PushTexturedQuad(mesh, Vec3{centerX - halfWidth, top, centerZ - halfDepth},
+                            Vec2{0.0f, 0.0f}, Vec3{centerX - halfWidth, top, centerZ + halfDepth},
+                            Vec2{0.0f, 3.0f}, Vec3{centerX + halfWidth, top, centerZ + halfDepth},
+                            Vec2{4.0f, 3.0f}, Vec3{centerX + halfWidth, top, centerZ - halfDepth},
+                            Vec2{4.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f},
+                            Color{1.0f, 1.0f, 1.0f, 1.0f});
 }
 
 void BuildPlatformTexture(Texture& texture)
@@ -180,8 +179,8 @@ void BuildPlatformTexture(Texture& texture)
             {
                 const f32 grain = static_cast<f32>(variation) * 0.003f;
                 const bool alternate = ((tileX + tileY) & 1) != 0;
-                const Color base = alternate ? Color{0.12f, 0.30f, 0.43f, 1.0f}
-                                             : Color{0.46f, 0.25f, 0.11f, 1.0f};
+                const Color base =
+                    alternate ? Color{0.12f, 0.30f, 0.43f, 1.0f} : Color{0.46f, 0.25f, 0.11f, 1.0f};
                 texel = Color{base.r + grain, base.g + grain, base.b + grain, 1.0f};
             }
             texture.SetTexel(0, x, y, texel);
@@ -195,8 +194,7 @@ bool BuildFloor(DynamicArray<VertexInput>& mesh)
     constexpr i32 kTiles = 16;
     constexpr f32 kExtent = 6.0f;
     constexpr f32 kStep = (2.0f * kExtent) / static_cast<f32>(kTiles);
-    const Color colors[2] = {Color{0.34f, 0.37f, 0.42f, 1.0f},
-                             Color{0.075f, 0.095f, 0.13f, 1.0f}};
+    const Color colors[2] = {Color{0.34f, 0.37f, 0.42f, 1.0f}, Color{0.075f, 0.095f, 0.13f, 1.0f}};
     const Vec3 up{0.0f, 1.0f, 0.0f};
     for (i32 z = 0; z < kTiles; ++z)
     {
@@ -207,8 +205,8 @@ bool BuildFloor(DynamicArray<VertexInput>& mesh)
             const f32 x1 = x0 + kStep;
             const f32 z1 = z0 + kStep;
             const Color color = colors[(x + z) & 1];
-            if (!PushQuad(mesh, Vec3{x0, 0.0f, z0}, Vec3{x0, 0.0f, z1},
-                          Vec3{x1, 0.0f, z1}, Vec3{x1, 0.0f, z0}, up, color))
+            if (!PushQuad(mesh, Vec3{x0, 0.0f, z0}, Vec3{x0, 0.0f, z1}, Vec3{x1, 0.0f, z1},
+                          Vec3{x1, 0.0f, z0}, up, color))
             {
                 return false;
             }
@@ -223,18 +221,16 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
     const Vec3 normals[6] = {Vec3{0.0f, 0.0f, 1.0f}, Vec3{0.0f, 0.0f, -1.0f},
                              Vec3{1.0f, 0.0f, 0.0f}, Vec3{-1.0f, 0.0f, 0.0f},
                              Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, -1.0f, 0.0f}};
-    const Vec3 tangents[6] = {Vec3{1.0f, 0.0f, 0.0f}, Vec3{-1.0f, 0.0f, 0.0f},
+    const Vec3 tangents[6] = {Vec3{1.0f, 0.0f, 0.0f},  Vec3{-1.0f, 0.0f, 0.0f},
                               Vec3{0.0f, 0.0f, -1.0f}, Vec3{0.0f, 0.0f, 1.0f},
-                              Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}};
-    const Vec3 bitangents[6] = {Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f},
-                                Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f},
+                              Vec3{1.0f, 0.0f, 0.0f},  Vec3{1.0f, 0.0f, 0.0f}};
+    const Vec3 bitangents[6] = {Vec3{0.0f, 1.0f, 0.0f},  Vec3{0.0f, 1.0f, 0.0f},
+                                Vec3{0.0f, 1.0f, 0.0f},  Vec3{0.0f, 1.0f, 0.0f},
                                 Vec3{0.0f, 0.0f, -1.0f}, Vec3{0.0f, 0.0f, 1.0f}};
     const f32 sine = std::sin(rotationY);
     const f32 cosine = std::cos(rotationY);
-    const auto rotate = [&](const Vec3& value)
-    {
-        return Vec3{cosine * value.x + sine * value.z, value.y,
-                    -sine * value.x + cosine * value.z};
+    const auto rotate = [&](const Vec3& value) {
+        return Vec3{cosine * value.x + sine * value.z, value.y, -sine * value.x + cosine * value.z};
     };
 
     for (usize face = 0; face < 6; ++face)
@@ -242,8 +238,10 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
         const Vec3 normal = rotate(normals[face]);
         const f32 tangentExtent = face < 2 ? halfExtents.x : halfExtents.z;
         const f32 bitangentExtent = face < 4 ? halfExtents.y : halfExtents.z;
-        const Vec3 faceCenter = center + rotate(normals[face] *
-            (face < 2 ? halfExtents.z : (face < 4 ? halfExtents.x : halfExtents.y)));
+        const Vec3 faceCenter =
+            center +
+            rotate(normals[face] *
+                   (face < 2 ? halfExtents.z : (face < 4 ? halfExtents.x : halfExtents.y)));
         const Vec3 right = rotate(tangents[face] * tangentExtent);
         const Vec3 up = rotate(bitangents[face] * bitangentExtent);
         if (!PushQuad(mesh, faceCenter - right - up, faceCenter + right - up,
@@ -255,8 +253,8 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
     return true;
 }
 
-bool AddSphere(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 radius,
-               const Color& color, u32 segments = 32, u32 rings = 20)
+bool AddSphere(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 radius, const Color& color,
+               u32 segments = 32, u32 rings = 20)
 {
     for (u32 ring = 0; ring < rings; ++ring)
     {
@@ -267,8 +265,7 @@ bool AddSphere(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 radius,
             const f32 phi0 = static_cast<f32>(segment) / static_cast<f32>(segments) * 2.0f * kPi;
             const f32 phi1 =
                 static_cast<f32>(segment + 1) / static_cast<f32>(segments) * 2.0f * kPi;
-            const auto normalAt = [](f32 theta, f32 phi)
-            {
+            const auto normalAt = [](f32 theta, f32 phi) {
                 return Vec3{std::sin(theta) * std::cos(phi), std::cos(theta),
                             std::sin(theta) * std::sin(phi)};
             };
@@ -276,11 +273,9 @@ bool AddSphere(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 radius,
             const Vec3 n01 = normalAt(theta0, phi1);
             const Vec3 n10 = normalAt(theta1, phi0);
             const Vec3 n11 = normalAt(theta1, phi1);
-            if (!PushSmoothTriangle(mesh, center + n00 * radius, n00,
-                                    center + n10 * radius, n10,
+            if (!PushSmoothTriangle(mesh, center + n00 * radius, n00, center + n10 * radius, n10,
                                     center + n11 * radius, n11, color) ||
-                !PushSmoothTriangle(mesh, center + n00 * radius, n00,
-                                    center + n11 * radius, n11,
+                !PushSmoothTriangle(mesh, center + n00 * radius, n00, center + n11 * radius, n11,
                                     center + n01 * radius, n01, color))
             {
                 return false;
@@ -299,21 +294,16 @@ bool BuildRoom(DynamicArray<VertexInput>& mesh)
     const Color backWall{0.11f, 0.15f, 0.22f, 1.0f};
     const Color sideWall{0.16f, 0.19f, 0.25f, 1.0f};
     const Color ceiling{0.25f, 0.27f, 0.30f, 1.0f};
-    if (!PushQuad(mesh, Vec3{-6.0f, 0.0f, -6.0f}, Vec3{6.0f, 0.0f, -6.0f},
-                  Vec3{6.0f, 6.0f, -6.0f}, Vec3{-6.0f, 6.0f, -6.0f},
-                  Vec3{0.0f, 0.0f, 1.0f}, backWall) ||
-        !PushQuad(mesh, Vec3{-6.0f, 0.0f, 6.0f}, Vec3{-6.0f, 6.0f, 6.0f},
-                  Vec3{6.0f, 6.0f, 6.0f}, Vec3{6.0f, 0.0f, 6.0f},
-                  Vec3{0.0f, 0.0f, -1.0f}, sideWall) ||
-        !PushQuad(mesh, Vec3{-6.0f, 0.0f, -6.0f}, Vec3{-6.0f, 6.0f, -6.0f},
-                  Vec3{-6.0f, 6.0f, 6.0f}, Vec3{-6.0f, 0.0f, 6.0f},
-                  Vec3{1.0f, 0.0f, 0.0f}, sideWall) ||
-        !PushQuad(mesh, Vec3{6.0f, 0.0f, 6.0f}, Vec3{6.0f, 6.0f, 6.0f},
-                  Vec3{6.0f, 6.0f, -6.0f}, Vec3{6.0f, 0.0f, -6.0f},
-                  Vec3{-1.0f, 0.0f, 0.0f}, sideWall) ||
-        !PushQuad(mesh, Vec3{-6.0f, 6.0f, 6.0f}, Vec3{-6.0f, 6.0f, -6.0f},
-                  Vec3{6.0f, 6.0f, -6.0f}, Vec3{6.0f, 6.0f, 6.0f},
-                  Vec3{0.0f, -1.0f, 0.0f}, ceiling))
+    if (!PushQuad(mesh, Vec3{-6.0f, 0.0f, -6.0f}, Vec3{6.0f, 0.0f, -6.0f}, Vec3{6.0f, 6.0f, -6.0f},
+                  Vec3{-6.0f, 6.0f, -6.0f}, Vec3{0.0f, 0.0f, 1.0f}, backWall) ||
+        !PushQuad(mesh, Vec3{-6.0f, 0.0f, 6.0f}, Vec3{-6.0f, 6.0f, 6.0f}, Vec3{6.0f, 6.0f, 6.0f},
+                  Vec3{6.0f, 0.0f, 6.0f}, Vec3{0.0f, 0.0f, -1.0f}, sideWall) ||
+        !PushQuad(mesh, Vec3{-6.0f, 0.0f, -6.0f}, Vec3{-6.0f, 6.0f, -6.0f}, Vec3{-6.0f, 6.0f, 6.0f},
+                  Vec3{-6.0f, 0.0f, 6.0f}, Vec3{1.0f, 0.0f, 0.0f}, sideWall) ||
+        !PushQuad(mesh, Vec3{6.0f, 0.0f, 6.0f}, Vec3{6.0f, 6.0f, 6.0f}, Vec3{6.0f, 6.0f, -6.0f},
+                  Vec3{6.0f, 0.0f, -6.0f}, Vec3{-1.0f, 0.0f, 0.0f}, sideWall) ||
+        !PushQuad(mesh, Vec3{-6.0f, 6.0f, 6.0f}, Vec3{-6.0f, 6.0f, -6.0f}, Vec3{6.0f, 6.0f, -6.0f},
+                  Vec3{6.0f, 6.0f, 6.0f}, Vec3{0.0f, -1.0f, 0.0f}, ceiling))
     {
         return false;
     }
@@ -326,8 +316,7 @@ bool BuildRoom(DynamicArray<VertexInput>& mesh)
                   Color{0.08f, 0.62f, 0.35f, 1.0f}, 0.12f) &&
            AddBox(mesh, Vec3{2.9f, 0.52f, 0.7f}, Vec3{0.55f, 0.52f, 0.55f},
                   Color{0.95f, 0.42f, 0.035f, 1.0f}, 0.16f) &&
-           AddSphere(mesh, Vec3{-3.35f, 0.4f, -2.7f}, 0.4f,
-                     Color{0.68f, 0.08f, 0.47f, 1.0f}) &&
+           AddSphere(mesh, Vec3{-3.35f, 0.4f, -2.7f}, 0.4f, Color{0.68f, 0.08f, 0.47f, 1.0f}) &&
            AddBox(mesh, Vec3{-3.7f, 2.1f, -5.88f}, Vec3{0.95f, 1.2f, 0.07f},
                   Color{0.75f, 0.34f, 0.07f, 1.0f}) &&
            AddBox(mesh, Vec3{2.9f, 2.4f, -5.88f}, Vec3{0.72f, 1.0f, 0.07f},
@@ -335,8 +324,8 @@ bool BuildRoom(DynamicArray<VertexInput>& mesh)
 }
 
 bool AppendCasters(const DynamicArray<VertexInput>& scene,
-                   const DynamicArray<VertexInput>& platform,
-                   const DynamicArray<VertexInput>& cube, DynamicArray<VertexInput>& casters)
+                   const DynamicArray<VertexInput>& platform, const DynamicArray<VertexInput>& cube,
+                   DynamicArray<VertexInput>& casters)
 {
     const DynamicArray<VertexInput>* meshes[] = {&scene, &platform, &cube};
     for (const DynamicArray<VertexInput>* mesh : meshes)
@@ -354,10 +343,9 @@ bool AppendCasters(const DynamicArray<VertexInput>& scene,
 
 bool RenderGeometry(Span<const VertexInput> vertices, const Mat4& model,
                     const ReflectionProbeSet& probes, const EnvironmentLighting* environment,
-                    const PbrDirectionalLight& sun, const PbrMaterial& material,
-                    const Vec3& eye, const Vec3& target,
-                    Framebuffer& color, DepthBuffer& depth, HeapAllocator& allocator,
-                    const Texture* baseColorTexture = nullptr)
+                    const PbrDirectionalLight& sun, const PbrMaterial& material, const Vec3& eye,
+                    const Vec3& target, Framebuffer& color, DepthBuffer& depth,
+                    HeapAllocator& allocator, const Texture* baseColorTexture = nullptr)
 {
     const Mat4 view = Mat4::LookAt(eye, target, Vec3{0.0f, 1.0f, 0.0f});
     const Mat4 projection = Mat4::PerspectiveReverseZ(
@@ -377,8 +365,7 @@ bool RenderGeometry(Span<const VertexInput> vertices, const Mat4& model,
     uniforms.lighting.sampler.addressU = AddressMode::Repeat;
     uniforms.lighting.sampler.addressV = AddressMode::Repeat;
     uniforms.lighting.directional[0] = sun;
-    uniforms.lighting.directional[1].direction =
-        cyber::math::Normalize(Vec3{0.38f, -0.62f, 0.72f});
+    uniforms.lighting.directional[1].direction = cyber::math::Normalize(Vec3{0.38f, -0.62f, 0.72f});
     uniforms.lighting.directional[1].radiance = Vec3{1.25f, 1.45f, 1.75f};
     uniforms.lighting.directionalCount = 2;
     ShaderDesc shader{};
@@ -394,9 +381,9 @@ bool RenderGeometry(Span<const VertexInput> vertices, const Mat4& model,
     return DrawShadedTriangles(shader, vertices, color, depth, nullptr, allocator).IsOk();
 }
 
-cyber::core::Status<cyber::core::Error>
-CaptureRoomFace(const ReflectionProbeCaptureView& view, Framebuffer& color, DepthBuffer& depth,
-                void* userData) noexcept
+cyber::core::Status<cyber::core::Error> CaptureRoomFace(const ReflectionProbeCaptureView& view,
+                                                        Framebuffer& color, DepthBuffer& depth,
+                                                        void* userData) noexcept
 {
     auto& scene = *static_cast<CaptureScene*>(userData);
     const Vec3 forward = CubeDirectionFromFaceUv(static_cast<u32>(view.face), 0.5f, 0.5f);
@@ -410,8 +397,8 @@ CaptureRoomFace(const ReflectionProbeCaptureView& view, Framebuffer& color, Dept
     shader.vertexShader = &SceneVertex;
     shader.pixelShader = &ScenePixel;
 
-    const auto draw = [&](const VertexInput* vertices, usize vertexCount,
-                          const Texture* texture) noexcept
+    const auto draw =
+        [&](const VertexInput* vertices, usize vertexCount, const Texture* texture) noexcept
     {
         SceneUniforms uniforms{};
         uniforms.transform.modelViewProjection = view.projection * view.view;
@@ -433,8 +420,9 @@ CaptureRoomFace(const ReflectionProbeCaptureView& view, Framebuffer& color, Dept
         uniforms.lighting.directional[1].radiance = Vec3{1.25f, 1.45f, 1.75f};
         uniforms.lighting.directionalCount = 2;
         shader.userData = &uniforms;
-        return DrawShadedTriangles(shader, Span<const VertexInput>{vertices, vertexCount},
-                                   color, depth, nullptr, *scene.allocator).IsOk();
+        return DrawShadedTriangles(shader, Span<const VertexInput>{vertices, vertexCount}, color,
+                                   depth, nullptr, *scene.allocator)
+            .IsOk();
     };
 
     if (!draw(scene.vertices, scene.vertexCount, nullptr) ||
@@ -500,8 +488,7 @@ int main(int argc, char** argv)
     const Vec3 lightCenter{0.0f, 1.6f, -0.5f};
     const Vec3 lightEye = lightCenter - cyber::math::Normalize(lightTravel) * 12.0f;
     const Mat4 lightView = Mat4::LookAt(lightEye, lightCenter, Vec3{0.0f, 1.0f, 0.0f});
-    const Mat4 lightProjection =
-        Mat4::OrthographicReverseZ(-8.0f, 8.0f, -8.0f, 8.0f, 0.1f, 35.0f);
+    const Mat4 lightProjection = Mat4::OrthographicReverseZ(-8.0f, 8.0f, -8.0f, 8.0f, 0.1f, 35.0f);
 
     DepthBufferDesc shadowDesc{};
     shadowDesc.width = kShadowMapSize;
@@ -540,8 +527,8 @@ int main(int argc, char** argv)
     captureDesc.resolveFilter = kDefaultResolveFilter;
     captureDesc.nearPlane = 0.08f;
     captureDesc.farPlane = 30.0f;
-    CaptureScene captureScene{scene.Data(), scene.Size(), platform.Data(), platform.Size(),
-                              &platformTexture, &sun, &allocator};
+    CaptureScene captureScene{scene.Data(),     scene.Size(), platform.Data(), platform.Size(),
+                              &platformTexture, &sun,         &allocator};
     auto captured = CaptureReflectionProbe(captureDesc, &CaptureRoomFace, &captureScene, allocator);
     if (!captured)
     {
@@ -555,8 +542,7 @@ int main(int argc, char** argv)
     environmentDesc.specularSampleCount = 96;
     environmentDesc.brdfSampleCount = 256;
     environmentDesc.useJobs = false;
-    auto environmentResult =
-        EnvironmentMap::Create(captured.Value(), environmentDesc, allocator);
+    auto environmentResult = EnvironmentMap::Create(captured.Value(), environmentDesc, allocator);
     if (!environmentResult)
     {
         std::printf("reflection environment preprocessing failed: %s\n",
@@ -638,10 +624,9 @@ int main(int argc, char** argv)
     PbrMaterial platformMaterial = roomMaterial;
     platformMaterial.metallic = 0.05f;
     platformMaterial.roughness = 0.58f;
-    if (!RenderGeometry(Span<const VertexInput>{platform.Data(), platform.Size()},
-                        Mat4::Identity(), noProbes, &environmentLighting, sun, platformMaterial,
-                        eye, target, antialias.Color(), antialias.Depth(), allocator,
-                        &platformTexture))
+    if (!RenderGeometry(Span<const VertexInput>{platform.Data(), platform.Size()}, Mat4::Identity(),
+                        noProbes, &environmentLighting, sun, platformMaterial, eye, target,
+                        antialias.Color(), antialias.Depth(), allocator, &platformTexture))
     {
         std::printf("failed to render textured platform\n");
         return 1;
@@ -652,8 +637,7 @@ int main(int argc, char** argv)
     auto resolveStatus = antialias.Resolve(resolved, nullptr, allocator, resolveDesc);
     if (!resolveStatus)
     {
-        std::printf("failed to resolve anti-aliased scene: %s\n",
-                    resolveStatus.Error().message);
+        std::printf("failed to resolve anti-aliased scene: %s\n", resolveStatus.Error().message);
         return 1;
     }
     ToneMap(resolved);
@@ -666,7 +650,8 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    std::printf("Rendered a %zu-triangle room at %dx%d with %dx%d supersampling, a textured platform, six-face probe capture, and a %d x %d shadow map.\n",
+    std::printf("Rendered a %zu-triangle room at %dx%d with %dx%d supersampling, a textured "
+                "platform, six-face probe capture, and a %d x %d shadow map.\n",
                 (scene.Size() + platform.Size() + cube.Size()) / 3, kWidth, kHeight,
                 antialias.Factor(), antialias.Factor(), kShadowMapSize, kShadowMapSize);
     std::printf("Reflective cube: local probe, metallic 0.92, roughness 0.075.\n");

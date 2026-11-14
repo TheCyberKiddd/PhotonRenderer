@@ -133,3 +133,34 @@ CG_TEST(platform_thread_ids)
     CG_EXPECT_TRUE(Thread::CurrentThreadId() != 0);
     Thread::SetCurrentThreadName("main-test");
 }
+
+CG_TEST(platform_thread_priority_applies_to_the_calling_thread)
+{
+    std::atomic<int> lowered{-1};
+    HeapAllocator allocator;
+    Thread thread;
+    struct Context
+    {
+        std::atomic<int>* result;
+    } context{&lowered};
+    CG_REQUIRE(thread
+                   .Start(
+                       allocator, "priority",
+                       [](void* userData) noexcept
+                       {
+                           auto* state = static_cast<Context*>(userData);
+                           const bool low = Thread::SetCurrentThreadPriority(ThreadPriority::Low);
+                           // Raising it back needs privileges on Linux; only lowering
+                           // is required to succeed.
+                           (void)Thread::SetCurrentThreadPriority(ThreadPriority::Normal);
+                           state->result->store(low ? 1 : 0);
+                       },
+                       &context)
+                   .IsOk());
+    thread.Join();
+#if defined(_WIN32) || defined(__linux__)
+    CG_EXPECT_EQ(lowered.load(), 1);
+#else
+    CG_EXPECT_TRUE(lowered.load() >= 0);
+#endif
+}

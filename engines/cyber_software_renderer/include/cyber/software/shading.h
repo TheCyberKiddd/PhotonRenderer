@@ -19,7 +19,7 @@ struct VertexInput
     // Unit normal in object space. The built-in transform shader maps it to
     // world space through the normal matrix.
     math::Vec3 normal{0.0f, 0.0f, 1.0f};
-    math::Vec2 uv;
+    math::Vec2 uv{};
     // Linear vertex color, multiplied into the material albedo by the standard
     // lighting shader when a scene uses it.
     math::Color color{1.0f, 1.0f, 1.0f, 1.0f};

@@ -1,4 +1,4 @@
-# Changelog
+# Photon Renderer Changelog
 
 All notable changes to CyberGraphics are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
@@ -8,6 +8,30 @@ semantic versioning once a public API exists.
 
 ### Added
 
+- Phase 33 texture compression in `cyber_assets`: `cyber/assets/bc_codec.h`
+  decodes BC1, BC4, BC5 and BC7 (all eight modes, bit-exact by the
+  specification) and encodes the same four formats, scoring every candidate
+  with the decoder's palette. BC1 searches both block modes with
+  punch-through alpha and optimal single-colour tables; BC4 searches both
+  modes; BC7 tries modes 6, 1 and 3 on the best-ranked partitions (mode 0 at
+  High) for opaque blocks and modes 6 and 5 with alpha, with an exact
+  single-colour path. `CompressTexture`, `DecompressTexture`,
+  `GenerateMipChain` (sRGB-correct) and `ComputePsnr` work on whole textures.
+  CI holds PSNR floors: BC7 43.0 dB, BC4 and BC5 51.0 dB, BC1 37.0 dB.
+- Phase 33 texture streaming in `cyber_renderer`:
+  `cyber/renderer/texture_streaming.h` adds `TextureStreamer`, a residency
+  manager over a 64 KiB page pool sized by a video-memory budget. Each
+  texture's packed mip tail is loaded first and never evicted, so every
+  texture is always drawable; finer levels stream coarsest first, ordered by
+  screen coverage, on background IO threads; evictions take surplus levels
+  first, then less important ones, and are committed only when they free
+  enough for the request, so they never thrash. Uploads per frame are
+  bounded, and staging memory is recycled. `ComputeWantedMip` turns projected
+  size into a mip and `RenderResidencyView` draws what is loaded.
+- `samples/18_texture_streaming`: 400 BC1 textures, 1.07 GiB, through a
+  64 MiB budget at 60 Hz with a worst streaming update of about 1 ms.
+- `platform::Thread::SetCurrentThreadPriority`, used to run streaming IO
+  below the frame.
 - Phase 32 GPU-driven rendering in `cyber_renderer`:
   `cyber/renderer/gpu_driven.h` describes a scene once — instances with world
   bounds, draw groups with up to four LODs, each LOD one indexed draw — and
@@ -587,6 +611,22 @@ semantic versioning once a public API exists.
 
 ### Changed
 
+- Software renderer performance pass, measured with
+  `cyber_software_frame_bench`: flat shading at 320x180 from 23.1 to 9.6 ms,
+  PBR at 1280x720 from 79.2 to 51.2 ms, PBR with four point lights at 1280x720
+  from 171.7 to 97.0 ms, and the fixed cost of a 576-triangle draw from 0.43
+  to 0.24 ms. Transient per-draw arrays come from a per-thread scratch arena
+  instead of being allocated and freed (and page-faulted back in) on every
+  draw; guard-band clip buffers are no longer constructed per triangle;
+  `math::IsFinite` is a constexpr exponent test instead of MSVC's out-of-line
+  `std::isfinite`, and the software renderer uses it throughout; snapping
+  rounds inline; Fresnel's fifth power is multiplied out; unshadowed point
+  lights skip the shadow lookup.
+- `PackPresentPixels` builds its sRGB table once instead of on every call and
+  packs float framebuffers with SSE2, bit-identically: 1280x720 packing from
+  7.2-8.1 ms to 3.7-4.1 ms.
+- `JobSystem::ParallelFor` runs a share of the batches on the calling thread
+  instead of blocking while the workers wake.
 - Temporal anti-aliasing no longer weights contributions by `1 / (1 + luma)`
   by default. The weighting suppresses a stray bright sample, and it biases the
   accumulation darker wherever a pixel alternates between a bright and a dark
@@ -597,6 +637,14 @@ semantic versioning once a public API exists.
 
 ### Fixed
 
+- `JobSystem::ParallelFor` could use its stack-allocated state after
+  returning: each batch read `state->system` after decrementing `remaining`,
+  and the caller may observe zero and return between the two. The pointer is
+  now read first and only the last batch notifies.
+- `software_gi_bake_is_deterministic_across_jobs` compared probes with a
+  whole-struct `memcmp`, including the padding after the `u8` state, so it
+  passed or failed with the baking thread's stack contents. It now compares
+  every member bit-exactly.
 - The D3D12 backend set a triangle-list topology on every pipeline bind,
   whatever the pipeline declared. A pipeline state fixes only the topology
   type, so point and line pipelines drew nothing. The pipeline now records its

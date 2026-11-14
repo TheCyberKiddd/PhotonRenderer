@@ -103,6 +103,12 @@ using cyber::memory::kInvalidHandleIndex;
             features.Add(Feature::StorageTextures);
             features.Add(Feature::BindlessResources);
         }
+        // Reserved textures need tier 2: tier 1 leaves reads of unmapped tiles
+        // undefined, which a streamer cannot build on (Phase 33).
+        if (options.TiledResourcesTier >= D3D12_TILED_RESOURCES_TIER_2)
+        {
+            features.Add(Feature::ReservedTextures);
+        }
     }
 
     // Ray tracing is reported from the tier the driver states, never inferred
@@ -644,6 +650,11 @@ Status<Error> D3D12WaitIdle(void* internal) noexcept
         value.destroyTextureView = &D3D12DestroyTextureView;
         value.textureViewInfo = &D3D12TextureViewInfo;
         value.textureState = &D3D12TextureState;
+        value.createTileHeap = &D3D12CreateTileHeap;
+        value.destroyTileHeap = &D3D12DestroyTileHeap;
+        value.textureTiling = &D3D12TextureTiling;
+        value.updateTileMappings = &D3D12UpdateTileMappings;
+        value.tileMapping = &D3D12TileMapping;
         value.createSampler = &D3D12CreateSampler;
         value.destroySampler = &D3D12DestroySampler;
         value.transition = &D3D12Transition;
@@ -1078,10 +1089,11 @@ Result<DeviceCreation, Error> CreateD3D12Device(const DeviceDesc& desc,
         {
             debug->EnableDebugLayer();
 
-            // GPU-based validation catches what the CPU-side checks cannot. It is
-            // slow and only available with the debug layer.
+            // GPU-based validation is intentionally exhaustive: it instruments
+            // GPU work and is too costly for the standard validation level.
             ComOwner<ID3D12Debug3> debug3;
-            if (SUCCEEDED(debug.Get()->QueryInterface(__uuidof(ID3D12Debug3), debug3.PutVoid())))
+            if (desc.validation == ValidationLevel::Exhaustive &&
+                SUCCEEDED(debug.Get()->QueryInterface(__uuidof(ID3D12Debug3), debug3.PutVoid())))
             {
                 debug3->SetEnableGPUBasedValidation(TRUE);
             }
@@ -1244,6 +1256,8 @@ void DestroyD3D12Device(void* internal) noexcept
     device->freeBufferSlots.Clear();
     device->textures.Clear();
     device->freeTextureSlots.Clear();
+    device->tileHeaps.Clear();
+    device->freeTileHeapSlots.Clear();
     device->views.Clear();
     device->freeViewSlots.Clear();
     device->samplers.Clear();

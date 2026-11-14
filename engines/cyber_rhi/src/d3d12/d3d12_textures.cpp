@@ -150,9 +150,8 @@ void BuildSampledViewDesc(const D3D12TextureSlot& texture, const TextureViewDesc
     const u32 mipCount = ResolveMipCount(texture.desc, desc.range);
     const u32 layerCount = ResolveLayerCount(texture.desc, desc.range);
     out = D3D12_SHADER_RESOURCE_VIEW_DESC{};
-    out.Format = IsDepthFormat(desc.format)
-                     ? ToSampledDepthFormat(desc.format, desc.range.aspect)
-                     : ToDxgiFormat(desc.format);
+    out.Format = IsDepthFormat(desc.format) ? ToSampledDepthFormat(desc.format, desc.range.aspect)
+                                            : ToDxgiFormat(desc.format);
     out.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     if (desc.dimension == TextureDimension::Cube)
     {
@@ -291,10 +290,36 @@ Status<Error> D3D12CreateTexture(void* internal, const TextureDesc& desc,
     }
 
     ID3D12Resource* texture = nullptr;
-    if (FAILED(device.device->CreateCommittedResource(
-            &heap, D3D12_HEAP_FLAG_NONE, &resource, D3D12_RESOURCE_STATE_COMMON, clearPointer,
-            __uuidof(ID3D12Resource), reinterpret_cast<void**>(&texture))) ||
-        texture == nullptr)
+    if (desc.reserved)
+    {
+        // Address space only (Phase 33): the tiles are mapped onto tile heaps
+        // later. Reserved resources require the 64 KiB undefined-swizzle layout.
+        if (!device.capabilities.features.Has(Feature::ReservedTextures))
+        {
+            return StatusError(ErrorCode::Unsupported,
+                               "d3d12 backend: reserved textures need tiled resources tier 2");
+        }
+        if (desc.dimension != TextureDimension::Dim2D || desc.arrayLayers != 1 ||
+            resource.SampleDesc.Count != 1 || HasUsage(desc.usage, TextureUsage::RenderTarget) ||
+            HasUsage(desc.usage, TextureUsage::DepthStencil))
+        {
+            return StatusError(ErrorCode::InvalidArgument,
+                               "d3d12 backend: a reserved texture is a plain 2d texture");
+        }
+        resource.Layout = D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE;
+        if (FAILED(device.device->CreateReservedResource(&resource, D3D12_RESOURCE_STATE_COMMON,
+                                                         nullptr, __uuidof(ID3D12Resource),
+                                                         reinterpret_cast<void**>(&texture))) ||
+            texture == nullptr)
+        {
+            return StatusError(ErrorCode::Internal,
+                               "d3d12 backend: reserved texture creation failed");
+        }
+    }
+    else if (FAILED(device.device->CreateCommittedResource(
+                 &heap, D3D12_HEAP_FLAG_NONE, &resource, D3D12_RESOURCE_STATE_COMMON, clearPointer,
+                 __uuidof(ID3D12Resource), reinterpret_cast<void**>(&texture))) ||
+             texture == nullptr)
     {
         return StatusError(ErrorCode::Internal, "d3d12 backend: texture creation failed");
     }
@@ -321,10 +346,37 @@ Status<Error> D3D12CreateTexture(void* internal, const TextureDesc& desc,
     slot.alive = true;
     slot.resource = texture;
     slot.desc = desc;
+    slot.tiling = TextureTiling{};
+    slot.tiles = nullptr;
     for (u32 subresource = 0; subresource < kMaxTrackedSubresources; ++subresource)
     {
         slot.states[subresource] = ResourceState::Undefined;
         slot.native[subresource] = D3D12_RESOURCE_STATE_COMMON;
+    }
+    if (desc.reserved)
+    {
+        slot.tiling = QueryResourceTiling(device.device, texture, desc);
+        void* memory =
+            slot.tiling.valid && slot.tiling.totalTileCount > 0
+                ? device.allocator->Allocate(static_cast<usize>(slot.tiling.totalTileCount) *
+                                                 sizeof(D3D12TileEntry),
+                                             alignof(D3D12TileEntry))
+                : nullptr;
+        if (memory == nullptr)
+        {
+            texture->Release();
+            slot.resource = nullptr;
+            slot.alive = false;
+            slot.generation = NextGeneration(slot.generation);
+            (void)device.freeTextureSlots.TryPushBack(index);
+            return StatusError(ErrorCode::Internal,
+                               "d3d12 backend: reserved texture tiling could not be recorded");
+        }
+        slot.tiles = static_cast<D3D12TileEntry*>(memory);
+        for (u32 tile = 0; tile < slot.tiling.totalTileCount; ++tile)
+        {
+            new (&slot.tiles[tile]) D3D12TileEntry{};
+        }
     }
 
     TextureHandle handle;
@@ -365,6 +417,12 @@ Status<Error> D3D12DestroyTexture(void* internal, TextureHandle handle) noexcept
 
     slot->resource->Release();
     slot->resource = nullptr;
+    if (slot->tiles != nullptr)
+    {
+        device.allocator->Deallocate(slot->tiles);
+        slot->tiles = nullptr;
+    }
+    slot->tiling = TextureTiling{};
     slot->alive = false;
     slot->generation = NextGeneration(slot->generation);
     if (!device.freeTextureSlots.TryPushBack(handle.index))
@@ -399,7 +457,8 @@ TextureInfo D3D12TextureInfo(const void* internal, TextureHandle handle) noexcep
     info.mipLevels = slot->desc.mipLevels;
     info.sampleCount = slot->desc.sampleCount;
     info.lifetime = slot->desc.lifetime;
-    info.sizeBytes = TextureByteSize(slot->desc);
+    info.sizeBytes = slot->desc.reserved ? 0 : TextureByteSize(slot->desc);
+    info.reserved = slot->desc.reserved;
     return info;
 }
 
@@ -474,7 +533,7 @@ Status<Error> D3D12CreateTextureView(void* internal, const TextureViewDesc& desc
         viewUsage == TextureViewUsage::DepthStencil
             ? DescriptorHeapKind::DepthStencil
             : (viewUsage == TextureViewUsage::RenderTarget ? DescriptorHeapKind::RenderTarget
-                                                            : DescriptorHeapKind::Resource);
+                                                           : DescriptorHeapKind::Resource);
     u32& used = heapKind == DescriptorHeapKind::DepthStencil
                     ? device.dsvDescriptorsUsed
                     : (heapKind == DescriptorHeapKind::RenderTarget ? device.rtvDescriptorsUsed
@@ -517,13 +576,14 @@ Status<Error> D3D12CreateTextureView(void* internal, const TextureViewDesc& desc
     }
     else
     {
-        const DXGI_FORMAT sampledFormat =
-            IsDepthFormat(desc.format) ? ToSampledDepthFormat(desc.format, desc.range.aspect)
-                                       : format;
+        const DXGI_FORMAT sampledFormat = IsDepthFormat(desc.format)
+                                              ? ToSampledDepthFormat(desc.format, desc.range.aspect)
+                                              : format;
         if (sampledFormat == DXGI_FORMAT_UNKNOWN)
         {
-            return StatusError(ErrorCode::InvalidArgument,
-                               "d3d12 backend: sampled depth view needs one depth or stencil aspect");
+            return StatusError(
+                ErrorCode::InvalidArgument,
+                "d3d12 backend: sampled depth view needs one depth or stencil aspect");
         }
         D3D12_SHADER_RESOURCE_VIEW_DESC view{};
         BuildSampledViewDesc(*texture, desc, view);
@@ -917,6 +977,21 @@ void ReleaseResources(D3D12Device& device) noexcept
         {
             slot.resource->Release();
             slot.resource = nullptr;
+        }
+        if (slot.tiles != nullptr)
+        {
+            device.allocator->Deallocate(slot.tiles);
+            slot.tiles = nullptr;
+        }
+        slot.alive = false;
+    }
+    for (u32 index = 0; index < device.tileHeaps.Size(); ++index)
+    {
+        D3D12TileHeapSlot& slot = device.tileHeaps[index];
+        if (slot.heap != nullptr)
+        {
+            slot.heap->Release();
+            slot.heap = nullptr;
         }
         slot.alive = false;
     }

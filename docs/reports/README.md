@@ -9,6 +9,7 @@ Phase 29: [image-based lighting and reflections report](phase-29.md).
 Phase 30: [post-processing and anti-aliasing report](phase-30.md).
 Phase 31: [global illumination and ray tracing report](phase-31.md).
 Phase 32: [GPU-driven rendering and compute report](phase-32.md).
+Phase 33: [texture compression and streaming report](phase-33.md).
 
 ## Template
 

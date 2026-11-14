@@ -117,13 +117,12 @@ bool PushSmoothTriangle(DynamicArray<VertexInput>& mesh, const Vec3& a, const Ve
 bool PushQuad(DynamicArray<VertexInput>& mesh, const Vec3& a, const Vec3& b, const Vec3& c,
               const Vec3& d, const Vec3& normal, const Color& color)
 {
-    return PushTriangle(mesh, a, b, c, normal, color) &&
-           PushTriangle(mesh, a, c, d, normal, color);
+    return PushTriangle(mesh, a, b, c, normal, color) && PushTriangle(mesh, a, c, d, normal, color);
 }
 
 bool PushTexturedQuad(DynamicArray<VertexInput>& mesh, const Vec3& a, const Vec2& uvA,
-                      const Vec3& b, const Vec2& uvB, const Vec3& c, const Vec2& uvC,
-                      const Vec3& d, const Vec2& uvD, const Vec3& normal)
+                      const Vec3& b, const Vec2& uvB, const Vec3& c, const Vec2& uvC, const Vec3& d,
+                      const Vec2& uvD, const Vec3& normal)
 {
     const auto push = [&](const Vec3& position, const Vec2& uv)
     {
@@ -144,18 +143,16 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
     const Vec3 normals[6] = {Vec3{0.0f, 0.0f, 1.0f}, Vec3{0.0f, 0.0f, -1.0f},
                              Vec3{1.0f, 0.0f, 0.0f}, Vec3{-1.0f, 0.0f, 0.0f},
                              Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, -1.0f, 0.0f}};
-    const Vec3 tangents[6] = {Vec3{1.0f, 0.0f, 0.0f}, Vec3{-1.0f, 0.0f, 0.0f},
+    const Vec3 tangents[6] = {Vec3{1.0f, 0.0f, 0.0f},  Vec3{-1.0f, 0.0f, 0.0f},
                               Vec3{0.0f, 0.0f, -1.0f}, Vec3{0.0f, 0.0f, 1.0f},
-                              Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}};
-    const Vec3 bitangents[6] = {Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f},
-                                Vec3{0.0f, 1.0f, 0.0f}, Vec3{0.0f, 1.0f, 0.0f},
+                              Vec3{1.0f, 0.0f, 0.0f},  Vec3{1.0f, 0.0f, 0.0f}};
+    const Vec3 bitangents[6] = {Vec3{0.0f, 1.0f, 0.0f},  Vec3{0.0f, 1.0f, 0.0f},
+                                Vec3{0.0f, 1.0f, 0.0f},  Vec3{0.0f, 1.0f, 0.0f},
                                 Vec3{0.0f, 0.0f, -1.0f}, Vec3{0.0f, 0.0f, 1.0f}};
     const f32 sine = std::sin(rotationY);
     const f32 cosine = std::cos(rotationY);
-    const auto rotate = [&](const Vec3& value)
-    {
-        return Vec3{cosine * value.x + sine * value.z, value.y,
-                    -sine * value.x + cosine * value.z};
+    const auto rotate = [&](const Vec3& value) {
+        return Vec3{cosine * value.x + sine * value.z, value.y, -sine * value.x + cosine * value.z};
     };
 
     for (usize face = 0; face < 6; ++face)
@@ -164,9 +161,9 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
         const f32 tangentExtent = face < 2 ? halfExtents.x : halfExtents.z;
         const f32 bitangentExtent = face < 4 ? halfExtents.y : halfExtents.z;
         const Vec3 faceCenter =
-            center + rotate(normals[face] * (face < 2 ? halfExtents.z
-                                                      : (face < 4 ? halfExtents.x
-                                                                  : halfExtents.y)));
+            center +
+            rotate(normals[face] *
+                   (face < 2 ? halfExtents.z : (face < 4 ? halfExtents.x : halfExtents.y)));
         const Vec3 right = rotate(tangents[face] * tangentExtent);
         const Vec3 up = rotate(bitangents[face] * bitangentExtent);
         if (!PushQuad(mesh, faceCenter - right - up, faceCenter + right - up,
@@ -181,8 +178,7 @@ bool AddBox(DynamicArray<VertexInput>& mesh, const Vec3& center, const Vec3& hal
 bool AddSphere(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 radius, const Color& color,
                u32 segments = 48, u32 rings = 32)
 {
-    const auto normalAt = [](f32 theta, f32 phi)
-    {
+    const auto normalAt = [](f32 theta, f32 phi) {
         return Vec3{std::sin(theta) * std::cos(phi), std::cos(theta),
                     std::sin(theta) * std::sin(phi)};
     };
@@ -213,8 +209,8 @@ bool AddSphere(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 radius, 
 
 // A torus about the Y axis: curvature in two directions, which sweeps a
 // highlight across a metal the way a sphere cannot.
-bool AddTorus(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 majorRadius,
-              f32 minorRadius, const Color& color, u32 major = 64, u32 minor = 28)
+bool AddTorus(DynamicArray<VertexInput>& mesh, const Vec3& center, f32 majorRadius, f32 minorRadius,
+              const Color& color, u32 major = 64, u32 minor = 28)
 {
     const auto point = [&](f32 u, f32 v, Vec3& position, Vec3& normal)
     {
@@ -585,8 +581,8 @@ struct Scene
         ShaderDesc shader{};
         shader.pipeline.view = view;
         shader.pipeline.projection = projection;
-        shader.pipeline.viewport = Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()),
-                                            static_cast<f32>(color.Height())};
+        shader.pipeline.viewport =
+            Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()), static_cast<f32>(color.Height())};
         shader.pipeline.cullMode = CullMode::None;
         shader.pipeline.useJobs = true;
         shader.vertexShader = &SceneVertex;
@@ -632,8 +628,8 @@ struct Scene
         shader.pixelShader = &NormalPixel;
         shader.userData = &uniforms;
         const DynamicArray<VertexInput>& mesh = scene.meshes[index];
-        if (!DrawShadedTriangles(shader, Span<const VertexInput>{mesh.Data(), mesh.Size()},
-                                 normals, depth, nullptr, allocator)
+        if (!DrawShadedTriangles(shader, Span<const VertexInput>{mesh.Data(), mesh.Size()}, normals,
+                                 depth, nullptr, allocator)
                  .IsOk())
         {
             return false;
@@ -690,8 +686,8 @@ cyber::core::Status<cyber::core::Error> CaptureFace(const ReflectionProbeCapture
         ShaderDesc shader{};
         shader.pipeline.view = view.view;
         shader.pipeline.projection = view.projection;
-        shader.pipeline.viewport = Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()),
-                                            static_cast<f32>(color.Height())};
+        shader.pipeline.viewport =
+            Viewport{0.0f, 0.0f, static_cast<f32>(color.Width()), static_cast<f32>(color.Height())};
         shader.pipeline.cullMode = CullMode::None;
         shader.pipeline.useJobs = true;
         shader.vertexShader = &SceneVertex;
@@ -702,9 +698,8 @@ cyber::core::Status<cyber::core::Error> CaptureFace(const ReflectionProbeCapture
                                  depth, nullptr, *context.allocator)
                  .IsOk())
         {
-            return cyber::core::Status<cyber::core::Error>::Err(
-                cyber::core::Error{cyber::core::ErrorCode::Internal,
-                                   "failed to render a reflection probe face"});
+            return cyber::core::Status<cyber::core::Error>::Err(cyber::core::Error{
+                cyber::core::ErrorCode::Internal, "failed to render a reflection probe face"});
         }
     }
     return cyber::core::Status<cyber::core::Error>::Ok();
@@ -851,8 +846,8 @@ int main(int argc, char** argv)
     for (u32 index = 0; index < kSphereCount; ++index)
     {
         // 0.04 to 0.46: a mirror at one end, a brushed finish at the other.
-        setMaterial(kGroupSweep + index, kBareMetal, 1.0f,
-                    0.04f + static_cast<f32>(index) * 0.105f, true, Vec3{0.60f, 0.58f, 0.55f});
+        setMaterial(kGroupSweep + index, kBareMetal, 1.0f, 0.04f + static_cast<f32>(index) * 0.105f,
+                    true, Vec3{0.60f, 0.58f, 0.55f});
     }
     setMaterial(kGroupChrome, Color{0.97f, 0.98f, 1.0f, 1.0f}, 1.0f, 0.045f, true,
                 Vec3{0.70f, 0.71f, 0.73f});
@@ -900,9 +895,8 @@ int main(int argc, char** argv)
         instances[index].instanceId = index;
         transport[index] = groups[index].transport;
     }
-    auto topLevel =
-        TopLevelAccelerationStructure::Build(Span<const RayInstanceDesc>{instances, kGroupCount},
-                                             heap);
+    auto topLevel = TopLevelAccelerationStructure::Build(
+        Span<const RayInstanceDesc>{instances, kGroupCount}, heap);
     if (!topLevel)
     {
         std::fprintf(stderr, "top-level BVH build failed: %s\n", topLevel.Error().message);
@@ -916,9 +910,8 @@ int main(int argc, char** argv)
     const Mat4 lightView =
         Mat4::LookAt(lightCenter - lightTravel * 24.0f, lightCenter, Vec3{0.0f, 1.0f, 0.0f});
     constexpr f32 kShadowExtent = 13.0f;
-    const Mat4 lightProjection = Mat4::OrthographicReverseZ(-kShadowExtent, kShadowExtent,
-                                                            -kShadowExtent, kShadowExtent, 0.1f,
-                                                            60.0f);
+    const Mat4 lightProjection = Mat4::OrthographicReverseZ(
+        -kShadowExtent, kShadowExtent, -kShadowExtent, kShadowExtent, 0.1f, 60.0f);
 
     DynamicArray<VertexInput> casters{heap};
     for (u32 index = 0; index < kGroupCount; ++index)
