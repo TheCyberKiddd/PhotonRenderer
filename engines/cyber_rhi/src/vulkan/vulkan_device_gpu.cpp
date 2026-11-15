@@ -191,13 +191,6 @@ void SetTrackedState(TextureSlot& texture, const ResolvedRange& range, ResourceS
     }
 }
 
-[[nodiscard]] ResourceState TrackedState(const TextureSlot& texture, u32 mip, u32 layer) noexcept
-{
-    const u32 total = texture.desc.mipLevels * texture.desc.arrayLayers;
-    const u32 index = total <= kMaxTrackedSubresources ? layer * texture.desc.mipLevels + mip : 0;
-    return texture.states[index];
-}
-
 [[nodiscard]] vk::ImageSubresourceRange ToNativeRange(const ResolvedRange& range) noexcept
 {
     return vk::ImageSubresourceRange{range.aspect, range.mip, range.mipCount, range.layer,
