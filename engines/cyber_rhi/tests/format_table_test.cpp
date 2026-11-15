@@ -55,6 +55,8 @@ constexpr ExpectedRow kExpectedRows[] = {
     {Format::BC5Unorm, 16, 4, 2, FormatComponentType::Float, false, false, false, true},
     {Format::BC7Unorm, 16, 4, 4, FormatComponentType::Float, false, false, false, true},
     {Format::BC7UnormSrgb, 16, 4, 4, FormatComponentType::Float, false, false, true, true},
+    {Format::BC6HUfloat, 16, 4, 3, FormatComponentType::Float, false, false, false, true},
+    {Format::BC6HSfloat, 16, 4, 3, FormatComponentType::Float, false, false, false, true},
 };
 
 }  // namespace
@@ -86,7 +88,7 @@ CG_TEST(rhi_format_table_matches_the_enumeration)
         CG_EXPECT_TRUE(std::strcmp(FormatName(static_cast<Format>(index)), "unknown") != 0);
         ++realFormats;
     }
-    CG_EXPECT_EQ(realFormats, u32{29});
+    CG_EXPECT_EQ(realFormats, u32{31});
 
     // The sentinel row classifies as nothing.
     const FormatInfo sentinel = FormatInfoOf(Format::Count);

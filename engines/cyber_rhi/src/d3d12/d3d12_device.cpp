@@ -168,6 +168,12 @@ void ReleaseQueues(D3D12Device& device) noexcept
             queue.queue->Release();
             queue.queue = nullptr;
         }
+        if (queue.tileFence != nullptr)
+        {
+            queue.tileFence->Release();
+            queue.tileFence = nullptr;
+        }
+        queue.tileSignalled = 0;
         queue.signalled = 0;
         queue.submissions = 0;
         device.queueHandles[index].Reset();
@@ -553,7 +559,8 @@ Status<Error> D3D12WaitIdle(void* internal) noexcept
     for (u32 index = 0; index < kQueueKindCount; ++index)
     {
         D3D12Queue& entry = device.queues[index];
-        if (entry.queue == nullptr || entry.submissions == 0)
+        // A queue that only mapped tiles has work to drain as well.
+        if (entry.queue == nullptr || (entry.submissions == 0 && entry.tileSignalled == 0))
         {
             continue;
         }

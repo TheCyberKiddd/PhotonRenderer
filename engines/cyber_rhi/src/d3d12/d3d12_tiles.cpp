@@ -153,6 +153,8 @@ Status<Error> D3D12DestroyTileHeap(void* internal, TileHeapHandle heap) noexcept
         return StatusError(ErrorCode::InvalidArgument,
                            "d3d12 backend: tile heap handle is stale or invalid");
     }
+    // A mapping update still queued names this heap.
+    D3D12WaitForTileMappings(device);
     slot->heap->Release();
     slot->heap = nullptr;
     slot->alive = false;
@@ -253,6 +255,19 @@ Status<Error> D3D12UpdateTileMappings(void* internal, QueueKind queue,
         commandQueue->UpdateTileMappings(texture->resource, count, coordinates, sizes,
                                          heap != nullptr ? heap->heap : nullptr, count, flags,
                                          heapOffsets, rangeCounts, D3D12_TILE_MAPPING_FLAG_NONE);
+        // Marks the update in the queue's order, so a later release of the
+        // texture or the heap can wait until the queue is done with both.
+        D3D12Queue& tileQueue = device.queues[static_cast<u32>(queue)];
+        if (tileQueue.tileFence == nullptr)
+        {
+            (void)device.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, __uuidof(ID3D12Fence),
+                                             reinterpret_cast<void**>(&tileQueue.tileFence));
+        }
+        if (tileQueue.tileFence != nullptr &&
+            SUCCEEDED(commandQueue->Signal(tileQueue.tileFence, tileQueue.tileSignalled + 1)))
+        {
+            ++tileQueue.tileSignalled;
+        }
         for (UINT i = 0; i < count; ++i)
         {
             const TileMapping& mapping = mappings[begin + i];
@@ -295,6 +310,29 @@ TileMappingInfo D3D12TileMapping(const void* internal, const TileMapping& tile) 
         info.heapTile = entry.tile;
     }
     return info;
+}
+
+void D3D12WaitForTileMappings(D3D12Device& device) noexcept
+{
+    for (u32 index = 0; index < kQueueKindCount; ++index)
+    {
+        D3D12Queue& entry = device.queues[index];
+        if (entry.tileFence == nullptr || entry.tileSignalled == 0 ||
+            entry.tileFence->GetCompletedValue() >= entry.tileSignalled)
+        {
+            continue;
+        }
+        HANDLE event = CreateEventExW(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE);
+        if (event == nullptr)
+        {
+            continue;
+        }
+        if (SUCCEEDED(entry.tileFence->SetEventOnCompletion(entry.tileSignalled, event)))
+        {
+            (void)WaitForSingleObject(event, INFINITE);
+        }
+        (void)CloseHandle(event);
+    }
 }
 
 }  // namespace cyber::rhi::detail

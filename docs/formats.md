@@ -65,6 +65,8 @@ row added to one and not the other fails the build.
 | `BC5Unorm` | 16 | 4x4 | 2 | unorm | no |
 | `BC7Unorm` | 16 | 4x4 | 4 | unorm | no |
 | `BC7UnormSrgb` | 16 | 4x4 | 4 | unorm | yes |
+| `BC6HUfloat` | 16 | 4x4 | 3 | float | no |
+| `BC6HSfloat` | 16 | 4x4 | 3 | float | no |
 
 BC1's fourth channel is the one-bit alpha the format selects between one and
 the interpolated value, so it is counted but has no independent storage. BC5

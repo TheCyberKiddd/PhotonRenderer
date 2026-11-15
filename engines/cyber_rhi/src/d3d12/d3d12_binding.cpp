@@ -1,5 +1,7 @@
 #include "d3d12_internal.h"
 
+#include <cyber/core/log.h>
+
 #if defined(CYBER_RHI_HAS_D3D12)
 
 #include <cyber/rhi/binding.h>
@@ -195,6 +197,14 @@ Status<Error> D3D12CreateShader(void* internal, const ShaderDesc& desc, ShaderHa
         device.allocator->Deallocate(text);
         if (errors != nullptr)
         {
+            // The compiler's own diagnostics are the only way to find a typo in
+            // a shader, so a failed compile logs them before they are freed.
+            if (FAILED(result) && errors->GetBufferPointer() != nullptr)
+            {
+                CG_LOG(Error, Rhi, "d3d12 backend: HLSL compile of '%s' failed: %.1500s",
+                       desc.label != nullptr ? desc.label : "shader",
+                       static_cast<const char*>(errors->GetBufferPointer()));
+            }
             errors->Release();
         }
         if (FAILED(result) || compiled == nullptr)

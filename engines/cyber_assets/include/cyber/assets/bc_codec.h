@@ -9,11 +9,14 @@
 namespace cyber::assets
 {
 
+using cyber::core::f32;
 using cyber::core::f64;
+using cyber::core::u16;
+using cyber::core::u32;
 using cyber::core::u8;
 
-/// Block-compression (BCn) codec: decoders for BC1, BC4, BC5 and BC7, which
-/// define the reference output, and encoders for the same four formats.
+/// Block-compression (BCn) codec: decoders for BC1 to BC5, BC6H and BC7, which
+/// define the reference output, and encoders for the same formats.
 ///
 /// Every block function works on one 4x4 block of texels in row-major order.
 /// RGBA blocks are 64 bytes (16 texels x RGBA8), BC4 input is 16 single-channel
@@ -48,6 +51,10 @@ inline constexpr usize kBcRgbaBlockBytes = kBcBlockTexels * 4;
 // ---- Block decoders ---------------------------------------------------------
 
 void DecodeBc1Block(const Byte* block, u8* rgba) noexcept;
+/// Explicit 4-bit alpha (value * 17) and an always-four-colour BC1 colour block.
+void DecodeBc2Block(const Byte* block, u8* rgba) noexcept;
+/// A BC4 alpha block and an always-four-colour BC1 colour block.
+void DecodeBc3Block(const Byte* block, u8* rgba) noexcept;
 /// Writes 16 red values.
 void DecodeBc4Block(const Byte* block, u8* red) noexcept;
 /// Writes 16 interleaved red/green pairs.
@@ -59,19 +66,69 @@ void DecodeBc7Block(const Byte* block, u8* rgba) noexcept;
 // ---- Block encoders ---------------------------------------------------------
 
 void EncodeBc1Block(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept;
+/// Alpha rounded to 4 bits; colour as in BC3.
+void EncodeBc2Block(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept;
+/// Alpha as a BC4 block; colour from the BC1 encoder with every index re-picked
+/// against the four-colour palette BC3 always decodes with.
+void EncodeBc3Block(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept;
 void EncodeBc4Block(const u8* red, Byte* block, const BcEncodeSettings& settings) noexcept;
 void EncodeBc5Block(const u8* redGreen, Byte* block, const BcEncodeSettings& settings) noexcept;
-/// Opaque blocks search modes 6, 1 and 3 (and mode 0 at High); blocks with
-/// alpha search modes 6 and 5. Partitioned modes test the best-scoring
+/// Opaque blocks search modes 6, 1 and 3 (and modes 0 and 2 at High); blocks
+/// with alpha search modes 6, 5, 4 (not at Fast) and 7 (not at Fast); High also
+/// tries the four channel rotations of modes 4 and 5. Partitioned modes test the best-scoring
 /// partitions from a cheap per-subset line-fit estimate.
 void EncodeBc7Block(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept;
+
+// ---- BC6H (HDR) -------------------------------------------------------------
+//
+// BC6H stores RGB as half-float endpoints (no alpha). Texels travel as IEEE 754
+// half-float bit patterns, three values (R, G, B) per texel, 48 per block, so a
+// caller converts float data with `FloatToHalf`. The decoder is bit-exact with
+// the Direct3D 11 specification for both the unsigned (UF16) and signed (SF16)
+// variants. The encoder picks among all 14 modes; unsigned encoding clamps
+// negative values to zero, and both clamp to the largest finite half.
+// `TextureFormat::Bc6hRgb` is the unsigned variant.
+
+/// IEEE 754 binary16 to binary32 (exact), and back with round-to-nearest-even,
+/// overflowing to infinity.
+[[nodiscard]] f32 HalfToFloat(u16 half) noexcept;
+[[nodiscard]] u16 FloatToHalf(f32 value) noexcept;
+
+inline constexpr usize kBc6hBlockBytes = 16;
+inline constexpr usize kBc6hBlockValues = kBcBlockTexels * 3;
+
+/// Reserved modes decode to zero, as the specification requires.
+void DecodeBc6hBlock(const Byte* block, u16* rgbHalf, bool isSigned = false) noexcept;
+/// Fast searches the single-subset modes 11 and 12; Normal adds modes 13 and
+/// 14, the best four partitions of the two-subset modes and a polish of the best
+/// two candidates; High tries all 32 partitions and polishes the best four.
+void EncodeBc6hBlock(const u16* rgbHalf, Byte* block, const BcEncodeSettings& settings,
+                     bool isSigned = false) noexcept;
+
+/// Compressed size of a `width x height` image, in bytes.
+[[nodiscard]] constexpr usize Bc6hSurfaceBytes(u32 width, u32 height) noexcept
+{
+    return static_cast<usize>((width + 3u) / 4u) * ((height + 3u) / 4u) * kBc6hBlockBytes;
+}
+
+/// Encodes `width x height` texels, four half values (R, G, B, ignored) per
+/// texel, row-major, into `blocks` (`Bc6hSurfaceBytes` bytes). Edge blocks
+/// replicate the last row and column. Returns false on a size mismatch.
+[[nodiscard]] bool CompressBc6hSurface(Span<const u16> rgbaHalf, u32 width, u32 height,
+                                       Span<Byte> blocks, const BcEncodeSettings& settings,
+                                       bool isSigned = false) noexcept;
+/// The inverse: writes four half values per texel, alpha 1.0. Returns false on a
+/// size mismatch.
+[[nodiscard]] bool DecompressBc6hSurface(Span<const Byte> blocks, u32 width, u32 height,
+                                         Span<u16> rgbaHalf, bool isSigned = false) noexcept;
 
 // ---- Surfaces ---------------------------------------------------------------
 
 /// True for the formats this codec can both encode and decode.
 [[nodiscard]] constexpr bool IsBcCodecFormat(TextureFormat format) noexcept
 {
-    return format == TextureFormat::Bc1Rgba || format == TextureFormat::Bc4R ||
+    return format == TextureFormat::Bc1Rgba || format == TextureFormat::Bc2Rgba ||
+           format == TextureFormat::Bc3Rgba || format == TextureFormat::Bc4R ||
            format == TextureFormat::Bc5Rg || format == TextureFormat::Bc7Rgba;
 }
 

@@ -6,6 +6,7 @@ cyber_add_module(
         src/asset_database.cpp
         src/asset_library.cpp
         src/bc_codec.cpp
+        src/bc6h_codec.cpp
         src/cooked.cpp
         src/deflate.cpp
         src/dds.cpp
@@ -97,6 +98,14 @@ if(CYBER_BUILD_TESTS)
         DEPENDS assets
     )
     set_tests_properties(assets_bc_codec PROPERTIES TIMEOUT 120)
+
+    cyber_add_test(
+        NAME assets_bc6h_codec
+        SOURCES
+            tests/bc6h_codec_test.cpp
+        DEPENDS assets
+    )
+    set_tests_properties(assets_bc6h_codec PROPERTIES TIMEOUT 120)
 
     cyber_add_test(
         NAME assets_obj

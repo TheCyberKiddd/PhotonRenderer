@@ -171,6 +171,10 @@ DXGI_FORMAT ToDxgiFormat(Format format) noexcept
         return DXGI_FORMAT_BC7_UNORM;
     case Format::BC7UnormSrgb:
         return DXGI_FORMAT_BC7_UNORM_SRGB;
+    case Format::BC6HUfloat:
+        return DXGI_FORMAT_BC6H_UF16;
+    case Format::BC6HSfloat:
+        return DXGI_FORMAT_BC6H_SF16;
     case Format::R32G32B32Float:
         // No DXGI format: the API reaches three-component vectors through a
         // vertex layout offset, not through a texel format.

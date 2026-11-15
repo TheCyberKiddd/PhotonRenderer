@@ -115,6 +115,9 @@ struct VirtualTexture::Impl
     memory::DynamicArray<u32> lastRequested;
     memory::DynamicArray<Byte> staging;
     bool dirtyMip[kMaxMips] = {};
+    // Set while `Flush` runs its internal updates: the dirty lists then keep
+    // growing, so a mirror that syncs once after the flush sees every change.
+    bool accumulateDirty = false;
     VirtualTextureStats stats{};
     u64 frame = 1;
 
@@ -231,7 +234,18 @@ struct VirtualTexture::Impl
             std::memcpy(origin + row * atlasStride, texels + static_cast<usize>(row) * stride * 4u,
                         static_cast<usize>(stride) * 4u);
         }
-        (void)dirtyCache.TryPushBack(slot);
+        bool listed = false;
+        if (accumulateDirty)
+        {
+            for (usize index = 0; index < dirtyCache.Size() && !listed; ++index)
+            {
+                listed = dirtyCache[index] == slot;
+            }
+        }
+        if (!listed)
+        {
+            (void)dirtyCache.TryPushBack(slot);
+        }
     }
 
     // Least recently used slot not touched this frame and not pinned.
@@ -529,6 +543,17 @@ void VirtualTexture::Shutdown() noexcept
     m_impl = nullptr;
 }
 
+const VirtualTextureDesc& VirtualTexture::Desc() const noexcept
+{
+    static const VirtualTextureDesc empty{};
+    return m_impl != nullptr ? m_impl->desc : empty;
+}
+
+u32 VirtualTexture::PageStride() const noexcept
+{
+    return m_impl != nullptr ? m_impl->stride : 0u;
+}
+
 u32 VirtualTexture::MipCount() const noexcept
 {
     return m_impl != nullptr ? m_impl->mipCount : 0u;
@@ -595,10 +620,13 @@ VirtualTextureStats VirtualTexture::Update() noexcept
     stats.evictionsThisFrame = 0;
     stats.producerErrorsThisFrame = 0;
     stats.cacheFullThisFrame = 0;
-    impl.dirtyCache.Clear();
-    for (u32 mip = 0; mip < impl.mipCount; ++mip)
+    if (!impl.accumulateDirty)
     {
-        impl.dirtyMip[mip] = false;
+        impl.dirtyCache.Clear();
+        for (u32 mip = 0; mip < impl.mipCount; ++mip)
+        {
+            impl.dirtyMip[mip] = false;
+        }
     }
 
     // 1. The frame's feedback: touch what is resident (and what the misses
@@ -756,6 +784,16 @@ void VirtualTexture::Flush() noexcept
     }
     Impl& impl = *m_impl;
     memory::DynamicArray<u32> wanted(*impl.allocator);
+    // Every internal update after the first keeps the dirty lists of the ones
+    // before it, so one `Sync` after `Flush` mirrors the whole flush.
+    struct AccumulateGuard
+    {
+        Impl& target;
+        ~AccumulateGuard()
+        {
+            target.accumulateDirty = false;
+        }
+    } accumulateGuard{impl};
     for (u32 iteration = 0; iteration < 100000; ++iteration)
     {
         if (iteration > 0)
@@ -772,6 +810,7 @@ void VirtualTexture::Flush() noexcept
         const VirtualTextureStats stats = Update();
         if (iteration == 0)
         {
+            impl.accumulateDirty = true;
             for (usize index = 0; index < impl.lastRequested.Size(); ++index)
             {
                 (void)wanted.TryPushBack(impl.lastRequested[index]);

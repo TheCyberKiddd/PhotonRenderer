@@ -6,6 +6,8 @@
 #include <cyber/renderer/gpu_driven.h>
 #include <cyber/renderer/gpu_light_culling.h>
 #include <cyber/renderer/gpu_texture_pool.h>
+#include <cyber/renderer/gpu_virtual_texture.h>
+#include <cyber/renderer/gpu_virtual_texture_feedback.h>
 #include <cyber/renderer/hot_pipeline.h>
 #include <cyber/renderer/material.h>
 #include <cyber/renderer/meshlet.h>

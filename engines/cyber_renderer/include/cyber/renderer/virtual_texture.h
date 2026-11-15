@@ -126,6 +126,10 @@ public:
                                                        memory::Allocator& allocator) noexcept;
     void Shutdown() noexcept;
 
+    /// The description given to `Initialize`.
+    [[nodiscard]] const VirtualTextureDesc& Desc() const noexcept;
+    /// Texels per cache page side, border included: `pageSize + 2 * border`.
+    [[nodiscard]] u32 PageStride() const noexcept;
     [[nodiscard]] u32 MipCount() const noexcept;
     [[nodiscard]] u32 PagesX(u32 mip) const noexcept;
     [[nodiscard]] u32 PagesY(u32 mip) const noexcept;
@@ -139,7 +143,9 @@ public:
     /// Main thread, once per frame, never concurrently with `Sample`.
     VirtualTextureStats Update() noexcept;
     /// Blocks until every requested page is resident or the cache is full of
-    /// pages the requests need (for tests and loads).
+    /// pages the requests need (for tests and loads). Runs several internal
+    /// updates; the dirty lists afterwards cover all of them, so mirror the
+    /// result with one `GpuVirtualTexture::Sync` before the next `Update`.
     void Flush() noexcept;
 
     /// Where a sample at (u, v, lod) reads from right now.

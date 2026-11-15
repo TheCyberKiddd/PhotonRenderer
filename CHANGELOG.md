@@ -8,6 +8,23 @@ semantic versioning once a public API exists.
 
 ### Added
 
+- Phase 33 completion: BC6H in `cyber_assets` (`DecodeBc6hBlock`,
+  `EncodeBc6hBlock`, surface helpers, `FloatToHalf` / `HalfToFloat`): all 14
+  modes, unsigned and signed, a decoder bit-exact with the hardware decoder
+  (0 of 1,152 blocks differ per variant on the HD Graphics 530 and WARP),
+  partition search and endpoint polish in the encoder; `Format::BC6HUfloat` and
+  `BC6HSfloat` in the RHI. `cyber/renderer/gpu_virtual_texture_feedback.h`:
+  shader-written page feedback with a readback ring (sampler feedback is tier 0
+  on both adapters), verified page for page against the CPU and in a closed
+  streaming loop. BC7 mode 5 channel rotations at High (alpha test card 42.03 to
+  42.49 dB).
+- Phase 33 GPU work: `cyber/renderer/gpu_virtual_texture.h` mirrors a
+  `VirtualTexture` into RHI textures and ships the HLSL sampler (`VtSample`),
+  verified against `VirtualTexture::Sample` on the hardware adapter and WARP;
+  BC2 and BC3 encoders and decoders; BC7 encoder modes 2, 4 and 7, which raise
+  the alpha-ramp test card from 40.08 to 41.34 dB at Normal; tests that stream
+  textures through a tile heap while a compute shader samples them.
+
 - Phase 33 texture compression in `cyber_assets`: `cyber/assets/bc_codec.h`
   decodes BC1, BC4, BC5 and BC7 (all eight modes, bit-exact by the
   specification) and encodes the same four formats, scoring every candidate
@@ -28,6 +45,14 @@ semantic versioning once a public API exists.
   enough for the request, so they never thrash. Uploads per frame are
   bounded, and staging memory is recycled. `ComputeWantedMip` turns projected
   size into a mip and `RenderResidencyView` draws what is loaded.
+- RHI reserved (tiled) textures behind `Feature::ReservedTextures`:
+  `TextureDesc::reserved`, `CreateTileHeap`, `TextureTilingOf`,
+  `UpdateTileMappings` and `TileMappingOf`, on D3D12, null and validating
+  devices. `cyber/renderer/gpu_texture_pool.h` adds `GpuTexturePool`, which
+  backs the streamer's page pool with a tile heap.
+- `cyber/renderer/virtual_texture.h` and `samples/19_virtual_texture`: virtual
+  texturing with per-mip page tables, ancestor fallback, an LRU page cache,
+  bordered pages and thread-safe feedback; software-renderer sampling only.
 - `samples/18_texture_streaming`: 400 BC1 textures, 1.07 GiB, through a
   64 MiB budget at 60 Hz with a worst streaming update of about 1 ms.
 - `platform::Thread::SetCurrentThreadPriority`, used to run streaming IO
@@ -637,6 +662,15 @@ semantic versioning once a public API exists.
 
 ### Fixed
 
+- A reserved texture or tile heap released with a tile-mapping update still
+  queued ended the process under the D3D12 debug layer; the backend now waits
+  for the queue's mapping updates first, `WaitIdle` drains a queue that only
+  mapped tiles, and the tile, pool and streaming tests run with full validation.
+- D3D12 `CopyBufferToTexture` used the destination origin as the origin of the
+  source box, failing any copy to a non-zero x or y.
+- The Null backend rejected every 2D buffer-texture copy to a mip above 0.
+- `VirtualTexture::Flush` now keeps its dirty lists across its internal updates.
+- The D3D12 backend logs the HLSL compiler's messages on a failed compile.
 - `JobSystem::ParallelFor` could use its stack-allocated state after
   returning: each batch read `state->system` after decrementing `remaining`,
   and the caller may observe zero and return between the two. The pointer is

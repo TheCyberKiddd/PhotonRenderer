@@ -415,6 +415,12 @@ Status<Error> D3D12DestroyTexture(void* internal, TextureHandle handle) noexcept
         }
     }
 
+    if (slot->desc.reserved)
+    {
+        // Tile-mapping updates are queue operations that name this resource; the
+        // layer (and the runtime) require them to have run before it is released.
+        D3D12WaitForTileMappings(device);
+    }
     slot->resource->Release();
     slot->resource = nullptr;
     if (slot->tiles != nullptr)

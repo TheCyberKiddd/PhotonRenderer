@@ -340,3 +340,79 @@ CG_TEST(d3d12_reserved_textures_round_trip_through_mapped_tiles)
         CG_SKIP("no adapter supports tiled resources tier 2");
     }
 }
+
+// A reserved texture, and the tile heap behind it, released straight after a
+// mapping update with nothing waited on in between. The update is a queue
+// operation that still names both, so the backend has to wait for it before it
+// releases either; without that the debug layer ended the process.
+CG_TEST(d3d12_reserved_texture_released_right_after_mapping_does_not_race_the_queue)
+{
+    const Backend* backend = D3D12Backend();
+    if (backend == nullptr)
+    {
+        CG_SKIP("no Direct3D 12 runtime");
+    }
+    AdapterInfo adapters[8]{};
+    const u32 adapterCount = backend->enumerateAdapters(adapters, 8);
+    u32 tested = 0;
+    for (u32 adapterIndex = 0; adapterIndex < adapterCount; ++adapterIndex)
+    {
+        HeapAllocator heap;
+        DeviceDesc desc{};
+        desc.backend = backend;
+        desc.adapterIndex = adapterIndex;
+        desc.validation = ValidationLevel::Standard;
+        auto createdDevice = Device::Create(desc, heap);
+        if (!createdDevice ||
+            !createdDevice.Value().Capabilities().features.Has(Feature::ReservedTextures))
+        {
+            continue;
+        }
+        Device device = std::move(createdDevice.Value());
+        ++tested;
+
+        for (u32 round = 0; round < 8; ++round)
+        {
+            TextureDesc textureDesc{};
+            textureDesc.format = Format::RGBA8Unorm;
+            textureDesc.usage = TextureUsage::Sampled | TextureUsage::CopyDestination;
+            textureDesc.width = kSize;
+            textureDesc.height = kSize;
+            textureDesc.mipLevels = 9;
+            textureDesc.reserved = true;
+            textureDesc.label = "reserved_race_test";
+            auto texture = device.CreateTexture(textureDesc);
+            CG_REQUIRE(texture.IsOk());
+            auto tileHeap = device.CreateTileHeap(TileHeapDesc{4, "reserved_race_heap"});
+            CG_REQUIRE(tileHeap.IsOk());
+
+            TileMapping mappings[4];
+            for (u32 tile = 0; tile < 4; ++tile)
+            {
+                mappings[tile].texture = texture.Value();
+                mappings[tile].mipLevel = 0;
+                mappings[tile].tileX = tile % 2;
+                mappings[tile].tileY = tile / 2;
+                mappings[tile].heap = tileHeap.Value();
+                mappings[tile].heapTile = tile;
+            }
+            CG_REQUIRE(
+                device.UpdateTileMappings(QueueKind::Graphics, Span<const TileMapping>(mappings, 4))
+                    .IsOk());
+            // Remap half of them to nothing, so both kinds of update are queued.
+            TileMapping unmap[2] = {mappings[0], mappings[1]};
+            unmap[0].heap = TileHeapHandle{};
+            unmap[1].heap = TileHeapHandle{};
+            CG_REQUIRE(
+                device.UpdateTileMappings(QueueKind::Graphics, Span<const TileMapping>(unmap, 2))
+                    .IsOk());
+            CG_REQUIRE(device.DestroyTexture(texture.Value()).IsOk());
+            CG_REQUIRE(device.DestroyTileHeap(tileHeap.Value()).IsOk());
+        }
+        CG_REQUIRE(device.WaitIdle().IsOk());
+    }
+    if (tested == 0)
+    {
+        CG_SKIP("no Direct3D 12 adapter with reserved textures");
+    }
+}

@@ -32,6 +32,7 @@
 #include <cyber/rhi/swapchain.h>
 #include <cyber/rhi/texture.h>
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -4013,9 +4014,9 @@ Status<Error> NullCmdCopyBuffer(void* internal, const BufferCopy& copy) noexcept
                            "null backend: a copy names a mip or layer the texture does not "
                            "have");
     }
-    const u32 mipWidth = texture->desc.width >> copy.mipLevel;
-    const u32 mipHeight = texture->desc.height >> copy.mipLevel;
-    const u32 mipDepth = texture->desc.depth >> copy.mipLevel;
+    const u32 mipWidth = std::max(texture->desc.width >> copy.mipLevel, 1u);
+    const u32 mipHeight = std::max(texture->desc.height >> copy.mipLevel, 1u);
+    const u32 mipDepth = std::max(texture->desc.depth >> copy.mipLevel, 1u);
     if (copy.x > mipWidth || copy.width > mipWidth - copy.x || copy.y > mipHeight ||
         copy.height > mipHeight - copy.y || copy.z > mipDepth || copy.depth > mipDepth - copy.z)
     {
@@ -4235,12 +4236,13 @@ Status<Error> NullCmdCopyTexture(void* internal, const TextureCopy& copy) noexce
                            "null backend: a texture copy names a mip or layer that does not "
                            "exist");
     }
-    const u32 sourceWidth = source->desc.width >> copy.sourceMipLevel;
-    const u32 sourceHeight = source->desc.height >> copy.sourceMipLevel;
-    const u32 sourceDepth = source->desc.depth >> copy.sourceMipLevel;
-    const u32 destinationWidth = destination->desc.width >> copy.destinationMipLevel;
-    const u32 destinationHeight = destination->desc.height >> copy.destinationMipLevel;
-    const u32 destinationDepth = destination->desc.depth >> copy.destinationMipLevel;
+    const u32 sourceWidth = std::max(source->desc.width >> copy.sourceMipLevel, 1u);
+    const u32 sourceHeight = std::max(source->desc.height >> copy.sourceMipLevel, 1u);
+    const u32 sourceDepth = std::max(source->desc.depth >> copy.sourceMipLevel, 1u);
+    const u32 destinationWidth = std::max(destination->desc.width >> copy.destinationMipLevel, 1u);
+    const u32 destinationHeight =
+        std::max(destination->desc.height >> copy.destinationMipLevel, 1u);
+    const u32 destinationDepth = std::max(destination->desc.depth >> copy.destinationMipLevel, 1u);
     if (copy.width > sourceWidth || copy.height > sourceHeight || copy.depth > sourceDepth ||
         copy.width > destinationWidth || copy.height > destinationHeight ||
         copy.depth > destinationDepth)

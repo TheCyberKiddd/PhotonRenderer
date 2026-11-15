@@ -63,6 +63,9 @@ enum class Format : u32
     BC5Unorm,
     BC7Unorm,
     BC7UnormSrgb,
+    // HDR block-compressed RGB, unsigned and signed half-float endpoints.
+    BC6HUfloat,
+    BC6HSfloat,
 
     // Count of enumerators, for table tests. Not a format.
     Count
@@ -223,6 +226,9 @@ namespace detail
         return detail::BlockRow(16, 4, false);
     case Format::BC7UnormSrgb:
         return detail::BlockRow(16, 4, true);
+    case Format::BC6HUfloat:
+    case Format::BC6HSfloat:
+        return detail::BlockRow(16, 3, false);
     case Format::Count:
         break;
     }
@@ -293,6 +299,10 @@ namespace detail
         return "BC7Unorm";
     case Format::BC7UnormSrgb:
         return "BC7UnormSrgb";
+    case Format::BC6HUfloat:
+        return "BC6HUfloat";
+    case Format::BC6HSfloat:
+        return "BC6HSfloat";
     case Format::Count:
         break;
     }

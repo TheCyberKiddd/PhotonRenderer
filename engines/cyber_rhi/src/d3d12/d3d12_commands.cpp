@@ -1668,8 +1668,10 @@ Status<Error> CopyBufferToTexture(void* internal, const BufferTextureCopy& copy)
                kTextureRowPitchAlignment) *
                   kTextureRowPitchAlignment;
 
-    const D3D12_BOX box{
-        copy.x, copy.y, copy.z, copy.x + copy.width, copy.y + copy.height, copy.z + copy.depth};
+    // The box selects the region of the *source*, here the placed footprint in
+    // the buffer, which always starts at its own origin; the texel origin
+    // `x, y, z` is where the region lands in the destination texture.
+    const D3D12_BOX box{0, 0, 0, copy.width, copy.height, copy.depth};
     list->list->CopyTextureRegion(&destination, copy.x, copy.y, copy.z, &source, &box);
     ++list->stats.copies;
     return Status<Error>::Ok();

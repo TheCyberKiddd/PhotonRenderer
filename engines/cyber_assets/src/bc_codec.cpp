@@ -1190,6 +1190,8 @@ struct Bc7Block
 {
     u32 mode = 6;
     u32 partition = 0;
+    u32 rotation = 0;        // mode 4 and 5: which channel swaps with alpha
+    u32 indexSelection = 0;  // mode 4: 1 gives the colour the 3-bit index set
     Bc7Endpoints endpoints;
     u8 index[16] = {};
     u8 secondary[16] = {};
@@ -1207,6 +1209,11 @@ void WriteBc7(const Bc7Block& source, Byte* out) noexcept
     const u32 highBit = 1u << (indexBits - 1u);
     const u32 maximum = (1u << indexBits) - 1u;
     const u32 colorChannels = mode.secondaryIndexBits != 0 ? 3u : 4u;
+    // The primary index set drives the colour channels, except in mode 4 with
+    // index selection, where it drives alpha and the secondary set the colour.
+    const bool swapRoles = mode.secondaryIndexBits != 0 && block.indexSelection != 0;
+    const u32 primaryFirst = swapRoles ? 3u : 0u;
+    const u32 primaryEnd = swapRoles ? 4u : colorChannels;
     for (u32 subset = 0; subset < mode.subsets; ++subset)
     {
         const u32 anchor = AnchorOfSubset(mode.subsets, block.partition, subset);
@@ -1214,7 +1221,7 @@ void WriteBc7(const Bc7Block& source, Byte* out) noexcept
         {
             continue;
         }
-        for (u32 ch = 0; ch < colorChannels; ++ch)
+        for (u32 ch = primaryFirst; ch < primaryEnd; ++ch)
         {
             std::swap(block.endpoints.code[subset][0][ch], block.endpoints.code[subset][1][ch]);
         }
@@ -1236,7 +1243,12 @@ void WriteBc7(const Bc7Block& source, Byte* out) noexcept
         const u32 secondaryMaximum = (1u << mode.secondaryIndexBits) - 1u;
         if ((block.secondary[0] & secondaryHigh) != 0)
         {
-            std::swap(block.endpoints.code[0][0][3], block.endpoints.code[0][1][3]);
+            const u32 secondaryFirst = swapRoles ? 0u : 3u;
+            const u32 secondaryEnd = swapRoles ? 3u : 4u;
+            for (u32 ch = secondaryFirst; ch < secondaryEnd; ++ch)
+            {
+                std::swap(block.endpoints.code[0][0][ch], block.endpoints.code[0][1][ch]);
+            }
             for (u32 texel = 0; texel < 16; ++texel)
             {
                 block.secondary[texel] = static_cast<u8>(secondaryMaximum - block.secondary[texel]);
@@ -1247,8 +1259,8 @@ void WriteBc7(const Bc7Block& source, Byte* out) noexcept
     BitWriter writer;
     writer.Write(1u << block.mode, block.mode + 1u);
     writer.Write(block.partition, mode.partitionBits);
-    writer.Write(0, mode.rotationBits);
-    writer.Write(0, mode.indexSelectionBits);
+    writer.Write(block.rotation, mode.rotationBits);
+    writer.Write(block.indexSelection, mode.indexSelectionBits);
     for (u32 ch = 0; ch < 3; ++ch)
     {
         for (u32 subset = 0; subset < mode.subsets; ++subset)
@@ -1350,7 +1362,11 @@ Bc7Block EncodeBc7Joint(const u8 (*texels)[4], u32 modeIndex, u32 partition,
     return block;
 }
 
-// Mode 5: RGB and alpha fitted separately, each with its own 2-bit indices.
+// Mode 5: RGB and alpha fitted separately, each with its own 2-bit indices, and
+// (at High) a channel rotation that lets any one of R, G, B swap places with
+// alpha, which helps when alpha is smooth and one colour channel is not. Every
+// rotation decodes to a permutation of the same four channels, so the squared
+// error measured on the rotated texels is the error of the real ones.
 Bc7Block EncodeBc7Mode5(const u8 (*texels)[4], BcQuality quality) noexcept
 {
     u8 members[16];
@@ -1358,35 +1374,128 @@ Bc7Block EncodeBc7Mode5(const u8 (*texels)[4], BcQuality quality) noexcept
     {
         members[texel] = static_cast<u8>(texel);
     }
-    Bc7FitSpec color;
-    color.channels = 3;
-    color.bits = 7;
-    color.indexBits = 2;
-    Bc7FitSpec alpha;
-    alpha.firstChannel = 3;
-    alpha.channels = 1;
-    alpha.bits = 8;
-    alpha.indexBits = 2;
-    const Bc7FitResult colorFit = FitSubset(color, texels, members, 16, quality);
-    const Bc7FitResult alphaFit = FitSubset(alpha, texels, members, 16, quality);
+    const u32 rotations = quality == BcQuality::High ? 4u : 1u;
 
-    Bc7Block block;
-    block.mode = 5;
-    for (u32 e = 0; e < 2; ++e)
+    Bc7Block best;
+    best.mode = 5;
+    for (u32 rotation = 0; rotation < rotations; ++rotation)
     {
-        for (u32 ch = 0; ch < 3; ++ch)
+        u8 rotated[16][4];
+        for (u32 texel = 0; texel < 16; ++texel)
         {
-            block.endpoints.code[0][e][ch] = colorFit.code[e][ch];
+            for (u32 ch = 0; ch < 4; ++ch)
+            {
+                rotated[texel][ch] = texels[texel][ch];
+            }
+            if (rotation != 0)
+            {
+                std::swap(rotated[texel][rotation - 1u], rotated[texel][3]);
+            }
         }
-        block.endpoints.code[0][e][3] = alphaFit.code[e][3];
+        Bc7FitSpec color;
+        color.channels = 3;
+        color.bits = 7;
+        color.indexBits = 2;
+        Bc7FitSpec alpha;
+        alpha.firstChannel = 3;
+        alpha.channels = 1;
+        alpha.bits = 8;
+        alpha.indexBits = 2;
+        const Bc7FitResult colorFit = FitSubset(color, rotated, members, 16, quality);
+        const Bc7FitResult alphaFit = FitSubset(alpha, rotated, members, 16, quality);
+        const u32 error = colorFit.error + alphaFit.error;
+        if (error >= best.error)
+        {
+            continue;
+        }
+        best.rotation = rotation;
+        for (u32 e = 0; e < 2; ++e)
+        {
+            for (u32 ch = 0; ch < 3; ++ch)
+            {
+                best.endpoints.code[0][e][ch] = colorFit.code[e][ch];
+            }
+            best.endpoints.code[0][e][3] = alphaFit.code[e][3];
+        }
+        for (u32 texel = 0; texel < 16; ++texel)
+        {
+            best.index[texel] = colorFit.index[texel];
+            best.secondary[texel] = alphaFit.index[texel];
+        }
+        best.error = error;
     }
+    return best;
+}
+
+// Mode 4: colour (5 bits) and alpha (6 bits) fitted separately like mode 5, but
+// with one set of 2-bit and one of 3-bit indices that `indexSelection` assigns
+// to colour or alpha, and a channel rotation that lets any one of R, G, B swap
+// places with alpha. The better of the 2 x 4 combinations is kept; every
+// combination decodes to a permutation of the same four channels, so the
+// squared error measured on the rotated texels is the error of the real ones.
+Bc7Block EncodeBc7Mode4(const u8 (*texels)[4], BcQuality quality) noexcept
+{
+    u8 members[16];
     for (u32 texel = 0; texel < 16; ++texel)
     {
-        block.index[texel] = colorFit.index[texel];
-        block.secondary[texel] = alphaFit.index[texel];
+        members[texel] = static_cast<u8>(texel);
     }
-    block.error = colorFit.error + alphaFit.error;
-    return block;
+    const u32 rotations = quality == BcQuality::High ? 4u : 1u;
+
+    Bc7Block best;
+    best.mode = 4;
+    for (u32 rotation = 0; rotation < rotations; ++rotation)
+    {
+        u8 rotated[16][4];
+        for (u32 texel = 0; texel < 16; ++texel)
+        {
+            for (u32 ch = 0; ch < 4; ++ch)
+            {
+                rotated[texel][ch] = texels[texel][ch];
+            }
+            if (rotation != 0)
+            {
+                std::swap(rotated[texel][rotation - 1u], rotated[texel][3]);
+            }
+        }
+        for (u32 selection = 0; selection < 2; ++selection)
+        {
+            Bc7FitSpec color;
+            color.channels = 3;
+            color.bits = 5;
+            color.indexBits = selection != 0 ? 3u : 2u;
+            Bc7FitSpec alpha;
+            alpha.firstChannel = 3;
+            alpha.channels = 1;
+            alpha.bits = 6;
+            alpha.indexBits = selection != 0 ? 2u : 3u;
+            const Bc7FitResult colorFit = FitSubset(color, rotated, members, 16, quality);
+            const Bc7FitResult alphaFit = FitSubset(alpha, rotated, members, 16, quality);
+            const u32 error = colorFit.error + alphaFit.error;
+            if (error >= best.error)
+            {
+                continue;
+            }
+            best.rotation = rotation;
+            best.indexSelection = selection;
+            for (u32 e = 0; e < 2; ++e)
+            {
+                for (u32 ch = 0; ch < 3; ++ch)
+                {
+                    best.endpoints.code[0][e][ch] = colorFit.code[e][ch];
+                }
+                best.endpoints.code[0][e][3] = alphaFit.code[e][3];
+            }
+            for (u32 texel = 0; texel < 16; ++texel)
+            {
+                best.index[texel] = selection != 0 ? alphaFit.index[texel] : colorFit.index[texel];
+                best.secondary[texel] =
+                    selection != 0 ? colorFit.index[texel] : alphaFit.index[texel];
+            }
+            best.error = error;
+        }
+    }
+    return best;
 }
 
 // Optimal single-colour pairs for BC7 mode 5: for each 8-bit value, the two
@@ -1797,6 +1906,141 @@ void EncodeBc5Block(const u8* redGreen, Byte* block, const BcEncodeSettings& set
     EncodeBc4Block(green, block + 8, settings);
 }
 
+// ---- BC2 and BC3 --------------------------------------------------------------
+//
+// Both are 16-byte blocks: eight bytes of alpha (BC2: sixteen explicit 4-bit
+// values; BC3: a BC4 block) followed by an eight-byte colour block. Unlike BC1,
+// the colour block is always decoded in four-colour mode, whatever the order of
+// its two endpoints, so the encoder scores indices against that palette.
+
+namespace
+{
+
+void Bc1FourColorPalette(u32 c0, u32 c1, i32 palette[4][3]) noexcept
+{
+    const Rgb565 a = Unpack565(c0);
+    const Rgb565 b = Unpack565(c1);
+    const i32 e0[3] = {Expand5(a.r), Expand6(a.g), Expand5(a.b)};
+    const i32 e1[3] = {Expand5(b.r), Expand6(b.g), Expand5(b.b)};
+    for (u32 ch = 0; ch < 3; ++ch)
+    {
+        palette[0][ch] = e0[ch];
+        palette[1][ch] = e1[ch];
+        palette[2][ch] = (2 * e0[ch] + e1[ch] + 1) / 3;
+        palette[3][ch] = (e0[ch] + 2 * e1[ch] + 1) / 3;
+    }
+}
+
+void DecodeFourColorBlock(const Byte* block, u8* rgba) noexcept
+{
+    const u32 c0 = static_cast<u32>(block[0]) | (static_cast<u32>(block[1]) << 8u);
+    const u32 c1 = static_cast<u32>(block[2]) | (static_cast<u32>(block[3]) << 8u);
+    const u32 indices = ReadLe32(block + 4);
+    i32 palette[4][3];
+    Bc1FourColorPalette(c0, c1, palette);
+    for (u32 texel = 0; texel < 16; ++texel)
+    {
+        const u32 index = (indices >> (texel * 2u)) & 3u;
+        for (u32 ch = 0; ch < 3; ++ch)
+        {
+            rgba[texel * 4 + ch] = static_cast<u8>(palette[index][ch]);
+        }
+    }
+}
+
+// Encodes the colour of `rgba` as an opaque BC1 block and then re-picks every
+// index against the four-colour palette of the chosen endpoints, so a block the
+// BC1 encoder emitted in three-colour mode still decodes to what was scored.
+void EncodeFourColorBlock(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept
+{
+    u8 opaque[kBcRgbaBlockBytes];
+    for (u32 texel = 0; texel < 16; ++texel)
+    {
+        opaque[texel * 4] = rgba[texel * 4];
+        opaque[texel * 4 + 1] = rgba[texel * 4 + 1];
+        opaque[texel * 4 + 2] = rgba[texel * 4 + 2];
+        opaque[texel * 4 + 3] = 255;
+    }
+    BcEncodeSettings colorSettings = settings;
+    colorSettings.bc1AlphaThreshold = 0;
+    EncodeBc1Block(opaque, block, colorSettings);
+    const u32 c0 = static_cast<u32>(block[0]) | (static_cast<u32>(block[1]) << 8u);
+    const u32 c1 = static_cast<u32>(block[2]) | (static_cast<u32>(block[3]) << 8u);
+    i32 palette[4][3];
+    Bc1FourColorPalette(c0, c1, palette);
+    u32 indices = 0;
+    for (u32 texel = 0; texel < 16; ++texel)
+    {
+        u32 bestIndex = 0;
+        i32 bestError = std::numeric_limits<i32>::max();
+        for (u32 index = 0; index < 4; ++index)
+        {
+            i32 error = 0;
+            for (u32 ch = 0; ch < 3; ++ch)
+            {
+                const i32 diff = palette[index][ch] - static_cast<i32>(rgba[texel * 4 + ch]);
+                error += diff * diff;
+            }
+            if (error < bestError)
+            {
+                bestError = error;
+                bestIndex = index;
+            }
+        }
+        indices |= bestIndex << (texel * 2u);
+    }
+    for (u32 byte = 0; byte < 4; ++byte)
+    {
+        block[4 + byte] = static_cast<Byte>((indices >> (byte * 8u)) & 0xFFu);
+    }
+}
+
+}  // namespace
+
+void DecodeBc2Block(const Byte* block, u8* rgba) noexcept
+{
+    DecodeFourColorBlock(block + 8, rgba);
+    for (u32 texel = 0; texel < 16; ++texel)
+    {
+        const u32 byte = static_cast<u32>(block[texel / 2]);
+        const u32 nibble = (texel & 1u) != 0 ? (byte >> 4u) : (byte & 15u);
+        rgba[texel * 4 + 3] = static_cast<u8>(nibble * 17u);
+    }
+}
+
+void DecodeBc3Block(const Byte* block, u8* rgba) noexcept
+{
+    DecodeFourColorBlock(block + 8, rgba);
+    u8 alpha[16];
+    DecodeBc4Block(block, alpha);
+    for (u32 texel = 0; texel < 16; ++texel)
+    {
+        rgba[texel * 4 + 3] = alpha[texel];
+    }
+}
+
+void EncodeBc2Block(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept
+{
+    for (u32 pair = 0; pair < 8; ++pair)
+    {
+        const u32 low = (static_cast<u32>(rgba[(pair * 2) * 4 + 3]) * 15u + 127u) / 255u;
+        const u32 high = (static_cast<u32>(rgba[(pair * 2 + 1) * 4 + 3]) * 15u + 127u) / 255u;
+        block[pair] = static_cast<Byte>(low | (high << 4u));
+    }
+    EncodeFourColorBlock(rgba, block + 8, settings);
+}
+
+void EncodeBc3Block(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept
+{
+    u8 alpha[16];
+    for (u32 texel = 0; texel < 16; ++texel)
+    {
+        alpha[texel] = rgba[texel * 4 + 3];
+    }
+    EncodeBc4Block(alpha, block, settings);
+    EncodeFourColorBlock(rgba, block + 8, settings);
+}
+
 void EncodeBc7Block(const u8* rgba, Byte* block, const BcEncodeSettings& settings) noexcept
 {
     u8 texels[16][4];
@@ -1830,6 +2074,32 @@ void EncodeBc7Block(const u8* rgba, Byte* block, const BcEncodeSettings& setting
         if (mode5.error < best.error)
         {
             best = mode5;
+        }
+        if (settings.quality != BcQuality::Fast && best.error > 0)
+        {
+            const Bc7Block mode4 = EncodeBc7Mode4(texels, settings.quality);
+            if (mode4.error < best.error)
+            {
+                best = mode4;
+            }
+        }
+        // Mode 7: two RGBA subsets, for blocks whose colour and alpha both
+        // split into two groups (an alpha edge across a colour edge).
+        const u32 candidates7 = settings.quality == BcQuality::Fast
+                                    ? 0u
+                                    : (settings.quality == BcQuality::Normal ? 3u : 8u);
+        if (candidates7 > 0 && best.error > 0)
+        {
+            u32 partitions7[64];
+            const u32 count7 = RankPartitions(texels, 2, 64, candidates7, partitions7);
+            for (u32 i = 0; i < count7 && best.error > 0; ++i)
+            {
+                const Bc7Block trial = EncodeBc7Joint(texels, 7, partitions7[i], settings.quality);
+                if (trial.error < best.error)
+                {
+                    best = trial;
+                }
+            }
         }
         WriteBc7(best, block);
         return;
@@ -1875,6 +2145,20 @@ void EncodeBc7Block(const u8* rgba, Byte* block, const BcEncodeSettings& setting
             if (trial.error < best.error)
             {
                 best = trial;
+            }
+        }
+        // Mode 2: three subsets with 5-bit endpoints and no p-bits, over all
+        // 64 three-subset partitions.
+        if (best.error > 0)
+        {
+            const u32 count3Wide = RankPartitions(texels, 3, 64, candidates3, partitions);
+            for (u32 i = 0; i < count3Wide && best.error > 0; ++i)
+            {
+                const Bc7Block trial = EncodeBc7Joint(texels, 2, partitions[i], settings.quality);
+                if (trial.error < best.error)
+                {
+                    best = trial;
+                }
             }
         }
     }
@@ -2035,6 +2319,12 @@ ImportResult<TextureAsset> CompressTexture(const TextureAsset& source, TextureFo
                         EncodeBc5Block(redGreen, destination, settings);
                         break;
                     }
+                    case TextureFormat::Bc2Rgba:
+                        EncodeBc2Block(rgba, destination, settings);
+                        break;
+                    case TextureFormat::Bc3Rgba:
+                        EncodeBc3Block(rgba, destination, settings);
+                        break;
                     default:
                         EncodeBc7Block(rgba, destination, settings);
                         break;
@@ -2089,6 +2379,12 @@ ImportResult<TextureAsset> DecompressTexture(const TextureAsset& source,
                     {
                     case TextureFormat::Bc1Rgba:
                         DecodeBc1Block(block, rgba);
+                        break;
+                    case TextureFormat::Bc2Rgba:
+                        DecodeBc2Block(block, rgba);
+                        break;
+                    case TextureFormat::Bc3Rgba:
+                        DecodeBc3Block(block, rgba);
                         break;
                     case TextureFormat::Bc4R:
                     {

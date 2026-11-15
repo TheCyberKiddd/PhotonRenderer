@@ -1,16 +1,16 @@
 # Phase 33 report: Texture compression and streaming
 
-Date: 2026-11-14
+Date: 2026-11-15
 
-Commits: implementation remains uncommitted in the working tree
+Commits: see the repository history; later GPU work is described below
 
 Machine: Windows 10 Pro 22H2, Intel Core i5-6400 (4 cores), Intel HD Graphics
 530, MSVC 19.44 / Visual Studio 2022, release preset
 
 ## What was built
 
-- `cyber/assets/bc_codec.h`: BC1, BC4, BC5 and BC7 block decoders (the
-  reference output) and encoders; `CompressTexture` / `DecompressTexture` for
+- `cyber/assets/bc_codec.h`: BC1 to BC7 block decoders (the reference output;
+  BC6H checked bit for bit against the hardware decoder) and encoders; `CompressTexture` / `DecompressTexture` for
   whole textures with mips and layers; `GenerateMipChain` with sRGB-correct
   filtering; `ComputePsnr`.
 - `cyber/renderer/texture_streaming.h`: `TextureStreamer`, a residency manager
@@ -19,6 +19,31 @@ Machine: Windows 10 Pro 22H2, Intel Core i5-6400 (4 cores), Intel HD Graphics
   below-normal priority, budgeted eviction that never thrashes, a per-frame
   upload limit, and recycled staging. `ComputeWantedMip` turns screen size into
   a mip. `RenderResidencyView` draws what is loaded.
+- RHI reserved textures (`Feature::ReservedTextures`): tile heaps, tiling
+  query, `UpdateTileMappings`, mapping query; on D3D12, null and validating
+  devices. Verified by readback on the HD Graphics 530 and WARP.
+- `cyber/renderer/gpu_texture_pool.h`: `GpuTexturePool`, a streaming sink that
+  backs the page pool with a tile heap; streamed bytes read back exactly and
+  evicted levels read as zero on both adapters.
+- `cyber/renderer/virtual_texture.h` and `samples/19_virtual_texture`: page
+  tables with ancestor fallback, LRU cache, bordered pages, thread-safe
+  feedback; a 65,536 x 65,536 flythrough in a 41 MiB cache.
+- `cyber/renderer/gpu_virtual_texture.h`: `GpuVirtualTexture`, which mirrors a
+  virtual texture's page table and atlas into RHI textures with incremental
+  uploads and ships the HLSL sampler; verified against the CPU lookup.
+- BC2 and BC3 encoders and decoders; BC7 modes 2, 4 (with rotation and index
+  selection) and 7 in the encoder.
+- BC6H (half-float HDR): all 14 modes, unsigned and signed, a decoder equal to
+  the hardware decoder on 1,152 test blocks per variant on both adapters, and an
+  encoder with partition search and endpoint polish; `Format::BC6HUfloat` and
+  `BC6HSfloat` in the RHI. BC7 mode 5 channel rotations at High.
+- `cyber/renderer/gpu_virtual_texture_feedback.h`: `GpuVirtualTextureFeedback`,
+  GPU-driven page feedback (shader-written counters, readback ring, `Resolve`),
+  verified page for page against the CPU and in a closed streaming loop. D3D12
+  sampler feedback was probed: tier 0 on both adapters.
+- RHI fix: a reserved texture or tile heap is no longer released while a
+  tile-mapping update is still queued (the debug layer ended the process);
+  regression test added.
 - `cyber/platform/thread.h`: `Thread::SetCurrentThreadPriority`.
 - `samples/18_texture_streaming`: 400 textures, 1.07 GiB of BC1 data, a 64 MiB
   budget, a 30-second flythrough paced at 60 Hz.
@@ -130,7 +155,31 @@ distance, levels a panel does not need are grey, and every tail is resident
 
 ## Test suites
 
-- `assets_bc_codec`: new, 12 tests.
+- `assets_bc_codec`: new, 16 tests, including BC2/BC3 spec behaviour and quality
+  floors and BC7 alpha floors at every level.
+- `renderer_gpu_virtual_texture`: 2 tests — the Null backend checks what `Sync`
+  uploads; on each D3D12 adapter a compute shader's 2,048 samples are compared
+  with the CPU lookup in three streaming states (0 differences on the HD
+  Graphics 530 and WARP).
+- `renderer_gpu_streaming_render`: 1 test — six streamed textures sampled by a
+  compute shader each frame under a quarter-size tile heap, 92,160 texels per
+  adapter checked against the source pattern (0 wrong on both adapters).
+  It and the pool test now run under full GPU-based validation.
+- `renderer_gpu_virtual_texture_feedback`: 2 tests — a Null-backend ring test; on
+  each D3D12 adapter the shader-written counters equal the CPU's page counts
+  (0 of 1,365 pages differ) and a closed loop converges in 12 frames with the
+  GPU sampler matching the CPU (0 of 256 differ).
+- `renderer_bc6h_hardware`: the CPU BC6H decoder against the hardware decoder
+  for random blocks of every mode and encoder output, unsigned and signed:
+  0 of 1,152 blocks differ on each adapter.
+- `assets_bc6h_codec`: 5 tests — half-float conversion over every pattern,
+  hand-built decoder vectors and reserved modes, encoder PSNR floors (UF16 Fast
+  35.10, Normal 38.48, High 38.49 dB; SF16 38.34 dB), clamping and determinism.
+- `rhi_d3d12_texture_array`: texture arrays through the D3D12 backend with four
+  index styles as FXC and DXIL (isolates the WARP constant-index defect).
+- `rhi_d3d12_reserved` has a second test that releases a reserved texture and its
+  heap right after mapping updates.
+
 - `renderer_texture_streaming`: new, 10 tests — tail first as one request,
   coarse-to-fine order, budget held with important textures winning, surplus
   evicted before needed levels, equal textures not trading memory, unused
@@ -140,21 +189,34 @@ distance, levels a panel does not need are grey, and every tail is resident
   passed 20 consecutive runs.
 - `platform_thread`: a priority test added.
 - `assets_public_headers` and `renderer_public_headers` include the new headers.
-- Full suite: 148 of 148 pass. `renderer_gpu_driven_d3d12`'s CPU-flatness
+- Full suite, 158 tests, `ctest -j2`: Release 158 of 158 (45 s); Debug 158 of 158
+  (192 s); AddressSanitizer 158 of 158 (678 s). The streaming render test and the
+  pool test run under full GPU-based validation in all three. ASan builds need a
+  short build path (a long one overflowed MAX_PATH for one test object), and
+  `renderer_gpu_virtual_texture` has a 600 s timeout because ASan makes it slow.
+- Earlier full-suite note: 148 of 148 passed before the GPU work. `renderer_gpu_driven_d3d12`'s CPU-flatness
   ratio check failed once under `ctest -j4`, while three other tests competed
   for the CPU, and passes three of three when run alone; it measures wall-time
   ratios and is load-sensitive.
 
 ## Known limits
 
-- The page pool is not bound to D3D12 reserved resources yet; the RHI has no
-  tiled-resource API. The streamer hands its sink page lists so that binding
-  does not change the streamer.
-- BC7 searches modes 0, 1, 3, 5 and 6; modes 2, 4 and 7 and channel rotation
-  are not searched.
-- An experimental CPU virtual-texture cache and sample are implemented, but
-  are not part of the measured residency acceptance above. Binding its page
-  cache to D3D12 reserved resources and collecting GPU sampler feedback remain
-  future work.
-- Wanted mips come from analytic coverage, not GPU sampler feedback, which the
-  development adapter does not support.
+- Tiling differs by driver (the HD Graphics 530 packs small mips, WARP gives
+  each its own tile); only those two adapters are tested.
+- WARP returns element 0 for a *constant* index into a bound texture array (FXC
+  and DXIL alike; run-time and non-uniform indices are right, and the hardware
+  adapter is right for all). Isolated by `rhi_d3d12_texture_array`; recorded as
+  a WARP defect there. Bindless access uses run-time indices and is unaffected.
+- BC6H has no perceptual weighting and is not tuned against another encoder;
+  texels are converted from float by the caller (`FloatToHalf`). The texture
+  asset surface API (`CompressTexture`) is RGBA8 and does not carry HDR data.
+- BC7 mode 4 and 5 rotations are searched only at High.
+- `VirtualTexture` and sample 19 are verified against the GPU sampler and the
+  GPU feedback loop, but `TextureStreamer` still takes analytic screen coverage
+  from `ComputeWantedMip`; feeding `ReportUsage` from a shader-written feedback
+  buffer is the same technique and is not wired.
+- Creating a device with `Exhaustive` validation after another device existed in
+  the process failed once (`rhi_d3d12_reserved`, which uses `Standard`); not
+  isolated.
+- `renderer_gpu_driven_d3d12` measures the fastest of several frames rather than
+  the median, since load can only add time.

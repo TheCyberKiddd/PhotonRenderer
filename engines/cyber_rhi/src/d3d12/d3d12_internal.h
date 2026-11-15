@@ -77,6 +77,13 @@ struct D3D12Queue
     D3D12_COMMAND_LIST_TYPE type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     std::atomic<u64> signalled{0};
     std::atomic<u64> submissions{0};
+    // Signalled behind every `UpdateTileMappings` this queue accepted. Mapping
+    // updates are queue operations like a submission, so a reserved texture or a
+    // tile heap must not be released while one of them is still pending; the
+    // destroy paths wait on this (created on first use, guarded by the device
+    // mutex).
+    ID3D12Fence* tileFence = nullptr;
+    u64 tileSignalled = 0;
     // What the last accepted batch contained, for `submissionInfo`.
     SubmissionInfo last{};
 };
@@ -594,6 +601,10 @@ D3D12UpdateTileMappings(void* internal, QueueKind queue,
                         memory::Span<const TileMapping> mappings) noexcept;
 [[nodiscard]] TileMappingInfo D3D12TileMapping(const void* internal,
                                                const TileMapping& tile) noexcept;
+// Blocks until every tile-mapping update the device queues accepted has run.
+// The caller holds the device mutex. Used before a reserved texture or a tile
+// heap is released, since the queue still refers to both until then.
+void D3D12WaitForTileMappings(D3D12Device& device) noexcept;
 // Reads the driver's tiling of a reserved resource into the RHI's shape.
 [[nodiscard]] TextureTiling QueryResourceTiling(ID3D12Device* device, ID3D12Resource* resource,
                                                 const TextureDesc& desc) noexcept;

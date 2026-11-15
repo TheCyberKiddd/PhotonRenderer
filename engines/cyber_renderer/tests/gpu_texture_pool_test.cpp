@@ -278,9 +278,7 @@ CG_TEST(gpu_texture_pool_streams_correct_bytes_on_d3d12)
         rhi::DeviceDesc deviceDesc{};
         deviceDesc.backend = backend;
         deviceDesc.adapterIndex = adapterIndex;
-        // Keep real-driver tier-2 mapping/readback separate from debug-layer
-        // validation; the Null-backend case above asserts mapping invariants.
-        deviceDesc.validation = rhi::ValidationLevel::Off;
+        deviceDesc.validation = rhi::ValidationLevel::Exhaustive;
         auto createdDevice = rhi::Device::Create(deviceDesc, allocator);
         if (!createdDevice ||
             !createdDevice.Value().Capabilities().features.Has(rhi::Feature::ReservedTextures))

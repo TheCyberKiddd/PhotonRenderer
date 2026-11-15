@@ -33,6 +33,10 @@ constexpr f64 kMinPsnrBc5 = 51.0;
 constexpr f64 kMinPsnrBc7Fast = 43.0;
 constexpr f64 kMinPsnrBc7Normal = 43.0;
 constexpr f64 kMinPsnrBc7Alpha = 39.5;
+constexpr f64 kMinPsnrBc2 = 36.0;
+constexpr f64 kMinPsnrBc3 = 38.0;
+constexpr f64 kMinPsnrBc7AlphaNormal = 40.8;
+constexpr f64 kMinPsnrBc7AlphaHigh = 42.0;
 
 constexpr u32 kSize = 128;
 
@@ -324,7 +328,8 @@ CG_TEST(encoding_is_deterministic)
 {
     HeapAllocator allocator;
     const TextureAsset card = MakeTestCard(allocator, true);
-    for (const TextureFormat format : {TextureFormat::Bc1Rgba, TextureFormat::Bc7Rgba})
+    for (const TextureFormat format : {TextureFormat::Bc1Rgba, TextureFormat::Bc2Rgba,
+                                       TextureFormat::Bc3Rgba, TextureFormat::Bc7Rgba})
     {
         auto first = CompressTexture(card, format, BcEncodeSettings{}, allocator);
         auto second = CompressTexture(card, format, BcEncodeSettings{}, allocator);
@@ -403,4 +408,108 @@ CG_TEST(psnr_reports_identical_and_unusable_inputs)
     CG_EXPECT_TRUE(std::isinf(ComputePsnr(Span<const u8>(a, 8), Span<const u8>(b, 8), 2, 1, 0x7u)));
     CG_EXPECT_TRUE(ComputePsnr(Span<const u8>(a, 8), Span<const u8>(b, 8), 2, 1, 0xFu) > 50.0);
     CG_EXPECT_EQ(ComputePsnr(Span<const u8>(a, 8), Span<const u8>(b, 8), 4, 4), 0.0);
+}
+
+CG_TEST(bc2_and_bc3_decode_the_colour_block_in_four_colour_mode)
+{
+    // Endpoints in "wrong" order (c0 < c1) would select BC1's three-colour mode;
+    // BC2 and BC3 ignore the order, so index 2 is (2 * c0 + c1) / 3 = 85.
+    const Byte colour[8] = {Byte{0x00}, Byte{0x00}, Byte{0xFF}, Byte{0xFF},
+                            Byte{0xAA}, Byte{0xAA}, Byte{0xAA}, Byte{0xAA}};
+    Byte bc2[16] = {};
+    Byte bc3[16] = {};
+    std::memcpy(bc2 + 8, colour, 8);
+    std::memcpy(bc3 + 8, colour, 8);
+    // BC2 alpha: texel 0 = 1, texel 1 = 15, texel 2 = 0, texel 3 = 8.
+    bc2[0] = Byte{0xF1};
+    bc2[1] = Byte{0x80};
+    // BC3 alpha: both endpoints 200 gives a flat 200 for any index.
+    bc3[0] = Byte{200};
+    bc3[1] = Byte{200};
+    u8 decoded2[64];
+    u8 decoded3[64];
+    cyber::assets::DecodeBc2Block(bc2, decoded2);
+    cyber::assets::DecodeBc3Block(bc3, decoded3);
+    for (u32 texel = 0; texel < 16; ++texel)
+    {
+        for (u32 ch = 0; ch < 3; ++ch)
+        {
+            CG_EXPECT_EQ(decoded2[texel * 4 + ch], 85u);
+            CG_EXPECT_EQ(decoded3[texel * 4 + ch], 85u);
+        }
+        CG_EXPECT_EQ(decoded3[texel * 4 + 3], 200u);
+    }
+    CG_EXPECT_EQ(decoded2[3], 17u);
+    CG_EXPECT_EQ(decoded2[7], 255u);
+    CG_EXPECT_EQ(decoded2[11], 0u);
+    CG_EXPECT_EQ(decoded2[15], 136u);
+}
+
+CG_TEST(bc2_and_bc3_encoders_meet_the_quality_floor)
+{
+    HeapAllocator allocator;
+    const TextureAsset card = MakeTestCard(allocator, true);
+    const f64 bc2 = RoundTripPsnr(card, TextureFormat::Bc2Rgba, BcQuality::Normal, 0xFu, allocator);
+    const f64 bc3 = RoundTripPsnr(card, TextureFormat::Bc3Rgba, BcQuality::Normal, 0xFu, allocator);
+    const TextureAsset opaque = MakeTestCard(allocator, false);
+    const f64 bc3Colour =
+        RoundTripPsnr(opaque, TextureFormat::Bc3Rgba, BcQuality::Normal, 0x7u, allocator);
+    // BC3 carries the same colour data as BC1, so opaque colour quality must
+    // stay within about 1 dB of the BC1 floor.
+    CG_EXPECT_TRUE(bc3Colour >= kMinPsnrBc1 - 1.0);
+    CG_EXPECT_TRUE(bc2 >= kMinPsnrBc2);
+    CG_EXPECT_TRUE(bc3 >= kMinPsnrBc3);
+    // BC3's interpolated alpha beats BC2's 4-bit alpha on this gradient.
+    CG_EXPECT_TRUE(bc3 > bc2);
+}
+
+CG_TEST(bc2_and_bc3_solid_and_edge_blocks_decode_to_what_was_scored)
+{
+    const BcEncodeSettings settings;
+    for (const int alphaValue : {0, 77, 255})
+    {
+        const u8 alpha = static_cast<u8>(alphaValue);
+        u8 rgba[64];
+        for (u32 texel = 0; texel < 16; ++texel)
+        {
+            rgba[texel * 4] = 40;
+            rgba[texel * 4 + 1] = 160;
+            rgba[texel * 4 + 2] = 220;
+            rgba[texel * 4 + 3] = alpha;
+        }
+        Byte block[16];
+        u8 decoded[64];
+        cyber::assets::EncodeBc3Block(rgba, block, settings);
+        cyber::assets::DecodeBc3Block(block, decoded);
+        for (u32 texel = 0; texel < 16; ++texel)
+        {
+            for (u32 ch = 0; ch < 3; ++ch)
+            {
+                CG_EXPECT_TRUE(std::abs(static_cast<int>(decoded[texel * 4 + ch]) -
+                                        static_cast<int>(rgba[texel * 4 + ch])) <= 2);
+            }
+            CG_EXPECT_EQ(decoded[texel * 4 + 3], alpha);
+        }
+        cyber::assets::EncodeBc2Block(rgba, block, settings);
+        cyber::assets::DecodeBc2Block(block, decoded);
+        for (u32 texel = 0; texel < 16; ++texel)
+        {
+            CG_EXPECT_TRUE(
+                std::abs(static_cast<int>(decoded[texel * 4 + 3]) - static_cast<int>(alpha)) <= 8);
+        }
+    }
+}
+
+CG_TEST(bc7_alpha_quality_floors_hold_and_more_search_never_hurts)
+{
+    HeapAllocator allocator;
+    const TextureAsset card = MakeTestCard(allocator, true);
+    const f64 fast = RoundTripPsnr(card, TextureFormat::Bc7Rgba, BcQuality::Fast, 0xFu, allocator);
+    const f64 normal =
+        RoundTripPsnr(card, TextureFormat::Bc7Rgba, BcQuality::Normal, 0xFu, allocator);
+    const f64 high = RoundTripPsnr(card, TextureFormat::Bc7Rgba, BcQuality::High, 0xFu, allocator);
+    CG_EXPECT_TRUE(normal >= fast - 0.01);
+    CG_EXPECT_TRUE(high >= normal - 0.01);
+    CG_EXPECT_TRUE(normal >= kMinPsnrBc7AlphaNormal);
+    CG_EXPECT_TRUE(high >= kMinPsnrBc7AlphaHigh);
 }

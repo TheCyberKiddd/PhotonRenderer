@@ -272,6 +272,11 @@ if(CYBER_RHI_ENABLE_D3D12)
         DEPENDS rhi memory
     )
     cyber_add_test(
+        NAME rhi_d3d12_texture_array
+        SOURCES tests/d3d12_texture_array_test.cpp
+        DEPENDS rhi memory
+    )
+    cyber_add_test(
         NAME rhi_d3d12_pipelines
         SOURCES tests/d3d12_pipelines_test.cpp
         DEPENDS rhi memory

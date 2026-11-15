@@ -7,6 +7,8 @@ cyber_add_module(
         src/descriptor_allocator.cpp
         src/frame_stream.cpp
         src/gpu_texture_pool.cpp
+        src/gpu_virtual_texture.cpp
+        src/gpu_virtual_texture_feedback.cpp
         src/gpu_culling_pipeline.cpp
         src/gpu_driven.cpp
         src/gpu_light_culling.cpp
@@ -27,6 +29,8 @@ cyber_add_module(
         include/cyber/renderer/descriptor_allocator.h
         include/cyber/renderer/frame_stream.h
         include/cyber/renderer/gpu_texture_pool.h
+        include/cyber/renderer/gpu_virtual_texture.h
+        include/cyber/renderer/gpu_virtual_texture_feedback.h
         include/cyber/renderer/gpu_culling_pipeline.h
         include/cyber/renderer/gpu_driven.h
         include/cyber/renderer/gpu_light_culling.h
@@ -158,7 +162,39 @@ cyber_add_test(
     DEPENDS renderer platform memory
 )
 
+cyber_add_test(
+    NAME renderer_gpu_virtual_texture
+    SOURCES
+        tests/gpu_virtual_texture_test.cpp
+    DEPENDS renderer rhi platform memory
+)
+
+cyber_add_test(
+    NAME renderer_bc6h_hardware
+    SOURCES
+        tests/bc6h_hardware_test.cpp
+    DEPENDS renderer rhi assets platform memory
+)
+
+cyber_add_test(
+    NAME renderer_gpu_virtual_texture_feedback
+    SOURCES
+        tests/gpu_virtual_texture_feedback_test.cpp
+    DEPENDS renderer rhi platform memory
+)
+
+cyber_add_test(
+    NAME renderer_gpu_streaming_render
+    SOURCES
+        tests/gpu_streaming_render_test.cpp
+    DEPENDS renderer rhi platform memory
+)
+
 if(CYBER_BUILD_TESTS)
+    set_tests_properties(renderer_gpu_streaming_render PROPERTIES TIMEOUT 180)
+    set_tests_properties(renderer_gpu_virtual_texture PROPERTIES TIMEOUT 600)
+    set_tests_properties(renderer_gpu_virtual_texture_feedback PROPERTIES TIMEOUT 600)
+    set_tests_properties(renderer_bc6h_hardware PROPERTIES TIMEOUT 300)
     set_tests_properties(renderer_texture_streaming PROPERTIES TIMEOUT 60)
     set_tests_properties(renderer_gpu_texture_pool PROPERTIES TIMEOUT 120)
     set_tests_properties(renderer_virtual_texture PROPERTIES TIMEOUT 120)
