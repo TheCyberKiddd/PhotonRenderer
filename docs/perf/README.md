@@ -68,3 +68,24 @@ Planned budget categories:
 - Notes: with the sample's main thread at normal priority instead of above
   normal, the worst frame was 4.9 ms with no streaming work in it — preemption
   by the IO threads on a 4-core CPU.
+
+## 2026-11-15 — Interactive textured sample and the resolve pass
+
+- Machine: Intel Core i5-6400 (4 cores), Intel HD Graphics 530, Windows 10 Pro 22H2
+- Build: release preset, MSVC 19.44
+- Scene: `samples/04_textured` window path, 1280x720, textured cube
+- Metric: smoothed frame rate over 100 to 500 frames; per-stage mean from the
+  sample's own timers
+- Result: default (2x per axis) 15.3 FPS before; at a fixed 2x, 17.6 FPS after
+  (resolve 23.5 -> 15.1 ms); the default now adapts to 1x and holds 60 FPS
+  (clear 1.9, draw 8.1, resolve skipped, pack 3.5, present 2.1 ms); fixed 1x was
+  43 FPS with a 9.2 ms resolve before
+- Notes: `ResolveSupersampled` made two job-system dispatches per 32-row band
+  (46 per frame) and wrote through `SetPixel`; it is now one dispatch of
+  independent row blocks that stream through a ring of filtered rows, with a
+  direct store for RGBA32F targets. Output is byte-identical (`software_antialias`
+  passes). The sample skips the resolve at one sample per pixel and steps the
+  sample count down when frame work exceeds 20 ms, back up after 120 frames under
+  6 ms with a 600-frame cooldown; `--supersample` pins it. Samples 01 to 03 were
+  already at the 60 FPS cap. A fixed 2x render of a 1280x720 window remains fill
+  bound at about 17 FPS.

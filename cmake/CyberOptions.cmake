@@ -20,6 +20,16 @@ else()
     set(CYBER_RHI_ENABLE_D3D12 OFF)
 endif()
 
+# The Vulkan backend declares the API subset it uses and loads the platform runtime
+# at run time (ADR 0029), so it needs no SDK and builds anywhere the loader
+# library name is known. It is off on Apple platforms, where Metal is the
+# backend and MoltenVK is not part of this project.
+if(APPLE)
+    set(CYBER_RHI_ENABLE_VULKAN OFF)
+else()
+    option(CYBER_RHI_ENABLE_VULKAN "Build the Vulkan backend" ON)
+endif()
+
 option(CYBER_BUILD_TESTS "Build the test suite" ON)
 option(CYBER_BUILD_TOOLS "Build developer tools" ON)
 option(CYBER_BUILD_SAMPLES "Build samples" ON)

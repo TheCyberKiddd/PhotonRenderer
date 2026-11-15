@@ -14,8 +14,6 @@ namespace
 {
 
 constexpr i32 kMaxTargetDimension = 16384;
-constexpr i32 kMinBandRows = 1;
-constexpr i32 kMaxBandRows = 256;
 // The widest window a filter can need: 2 * radius * factor + 1 taps with
 // radius 2 and factor 16.
 constexpr i32 kMaxFilterTaps = 2 * 2 * kMaxSupersampleFactor + 1;
@@ -143,119 +141,156 @@ struct Rgba
     f32 a = 0.0f;
 };
 
-// Horizontal pass context. One invocation filters one source row of the band
-// into destinationWidth accumulated samples.
-struct HorizontalContext
+// Filters one source row horizontally into `destinationWidth` accumulated
+// samples. RGBA32F rows are read directly and, away from the edges, without
+// the per-tap clamp; every other format goes through GetPixel, which converts.
+void FilterSourceRow(const Framebuffer& source, const FilterKernel& kernel, i32 factor,
+                     i32 sourceRow, Rgba* output, i32 destinationWidth) noexcept
 {
-    const Framebuffer* source = nullptr;
-    Rgba* band = nullptr;
-    const FilterKernel* kernel = nullptr;
-    i32 destinationWidth = 0;
-    i32 factor = 0;
-    i32 firstSourceRow = 0;
-};
-
-void FilterSourceRow(void* userData, u32 index) noexcept
-{
-    const HorizontalContext& context = *static_cast<const HorizontalContext*>(userData);
-    const Framebuffer& source = *context.source;
-    const FilterKernel& kernel = *context.kernel;
-    const i32 sourceRow =
-        std::clamp(context.firstSourceRow + static_cast<i32>(index), 0, source.Height() - 1);
-    Rgba* output =
-        context.band + static_cast<usize>(index) * static_cast<usize>(context.destinationWidth);
-
-    // RGBA32F rows are read directly; every other format goes through
-    // GetPixel, which converts.
     const f32* floatRow = nullptr;
     if (source.Format() == PixelFormat::RGBA32F)
     {
         floatRow = reinterpret_cast<const f32*>(source.Row(sourceRow));
     }
     const i32 lastColumn = source.Width() - 1;
+    const i32 taps = kernel.tapCount;
 
-    for (i32 x = 0; x < context.destinationWidth; ++x)
+    for (i32 x = 0; x < destinationWidth; ++x)
     {
-        const i32 base = x * context.factor + kernel.firstOffset;
+        const i32 base = x * factor + kernel.firstOffset;
         Rgba sum{};
-        for (i32 tap = 0; tap < kernel.tapCount; ++tap)
+        if (floatRow != nullptr && base >= 0 && base + taps - 1 <= lastColumn)
         {
-            const i32 column = std::clamp(base + tap, 0, lastColumn);
-            const f32 weight = kernel.weights[tap];
-            if (floatRow != nullptr)
+            const f32* texel = floatRow + static_cast<usize>(base) * 4;
+            for (i32 tap = 0; tap < taps; ++tap, texel += 4)
             {
-                const f32* texel = floatRow + static_cast<usize>(column) * 4;
+                const f32 weight = kernel.weights[tap];
                 sum.r += texel[0] * weight;
                 sum.g += texel[1] * weight;
                 sum.b += texel[2] * weight;
                 sum.a += texel[3] * weight;
             }
-            else
+        }
+        else
+        {
+            for (i32 tap = 0; tap < taps; ++tap)
             {
-                const math::Color texel = source.GetPixel(column, sourceRow);
-                sum.r += texel.r * weight;
-                sum.g += texel.g * weight;
-                sum.b += texel.b * weight;
-                sum.a += texel.a * weight;
+                const i32 column = std::clamp(base + tap, 0, lastColumn);
+                const f32 weight = kernel.weights[tap];
+                if (floatRow != nullptr)
+                {
+                    const f32* texel = floatRow + static_cast<usize>(column) * 4;
+                    sum.r += texel[0] * weight;
+                    sum.g += texel[1] * weight;
+                    sum.b += texel[2] * weight;
+                    sum.a += texel[3] * weight;
+                }
+                else
+                {
+                    const math::Color texel = source.GetPixel(column, sourceRow);
+                    sum.r += texel.r * weight;
+                    sum.g += texel.g * weight;
+                    sum.b += texel.b * weight;
+                    sum.a += texel.a * weight;
+                }
             }
         }
         output[x] = sum;
     }
 }
 
-// Vertical pass context. One invocation produces one destination row from the
-// band the horizontal pass filled.
-struct VerticalContext
+// One block of destination rows. The block streams down the image: each source
+// row is filtered horizontally once into a ring of `tapCount` rows and every
+// destination row that needs it reads it from there, so the scratch is a few
+// rows rather than the image and the whole resolve is one job-system dispatch.
+// Blocks overlap only by the vertical reach of the filter at their seams.
+struct ResolveBlockContext
 {
+    const Framebuffer* source = nullptr;
     Framebuffer* destination = nullptr;
-    const Rgba* band = nullptr;
     const FilterKernel* kernel = nullptr;
+    Rgba* scratch = nullptr;
+    usize scratchSamplesPerBlock = 0;
     i32 destinationWidth = 0;
+    i32 destinationHeight = 0;
     i32 factor = 0;
-    i32 bandRowCount = 0;
-    i32 firstSourceRow = 0;
-    i32 firstDestinationRow = 0;
+    i32 blockRows = 0;
     bool clampNegative = false;
 };
 
-void FilterDestinationRow(void* userData, u32 index) noexcept
+void ResolveBlock(void* userData, u32 index) noexcept
 {
-    const VerticalContext& context = *static_cast<const VerticalContext*>(userData);
+    const ResolveBlockContext& context = *static_cast<const ResolveBlockContext*>(userData);
     const FilterKernel& kernel = *context.kernel;
-    const i32 destinationRow = context.firstDestinationRow + static_cast<i32>(index);
-    const i32 base = destinationRow * context.factor + kernel.firstOffset;
+    const i32 taps = kernel.tapCount;
+    const i32 width = context.destinationWidth;
+    const i32 sourceLastRow = context.source->Height() - 1;
+    Rgba* ring = context.scratch + static_cast<usize>(index) * context.scratchSamplesPerBlock;
 
-    // The horizontal pass already edge-clamped each band row, so a tap only
-    // has to stay inside the band.
+    const i32 firstRow = static_cast<i32>(index) * context.blockRows;
+    const i32 endRow = std::min(context.destinationHeight, firstRow + context.blockRows);
+    const auto slotOf = [taps](i32 unclampedRow) noexcept
+    { return static_cast<usize>(((unclampedRow % taps) + taps) % taps); };
+
+    // Highest unclamped source row already in the ring. Starts below any row a
+    // block can need.
+    i32 filteredUpTo = -(1 << 30);
     const Rgba* tapRows[kMaxFilterTaps]{};
-    for (i32 tap = 0; tap < kernel.tapCount; ++tap)
-    {
-        const i32 bandRow =
-            std::clamp(base + tap - context.firstSourceRow, 0, context.bandRowCount - 1);
-        tapRows[tap] = context.band +
-                       static_cast<usize>(bandRow) * static_cast<usize>(context.destinationWidth);
-    }
+    const bool floatDestination = context.destination->Format() == PixelFormat::RGBA32F;
 
-    for (i32 x = 0; x < context.destinationWidth; ++x)
+    for (i32 row = firstRow; row < endRow; ++row)
     {
-        Rgba sum{};
-        for (i32 tap = 0; tap < kernel.tapCount; ++tap)
+        const i32 firstTapRow = row * context.factor + kernel.firstOffset;
+        const i32 lastTapRow = firstTapRow + taps - 1;
+        for (i32 unclamped = std::max(filteredUpTo + 1, firstTapRow); unclamped <= lastTapRow;
+             ++unclamped)
         {
-            const Rgba& value = tapRows[tap][x];
-            const f32 weight = kernel.weights[tap];
-            sum.r += value.r * weight;
-            sum.g += value.g * weight;
-            sum.b += value.b * weight;
-            sum.a += value.a * weight;
+            FilterSourceRow(*context.source, kernel, context.factor,
+                            std::clamp(unclamped, 0, sourceLastRow),
+                            ring + slotOf(unclamped) * static_cast<usize>(width), width);
         }
-        if (context.clampNegative)
+        filteredUpTo = lastTapRow;
+
+        for (i32 tap = 0; tap < taps; ++tap)
         {
-            sum.r = std::max(sum.r, 0.0f);
-            sum.g = std::max(sum.g, 0.0f);
-            sum.b = std::max(sum.b, 0.0f);
-            sum.a = std::max(sum.a, 0.0f);
+            tapRows[tap] = ring + slotOf(firstTapRow + tap) * static_cast<usize>(width);
         }
-        context.destination->SetPixel(x, destinationRow, math::Color{sum.r, sum.g, sum.b, sum.a});
+        // RGBA32F destinations are written in place; SetPixel would redo the
+        // bounds check and the format switch for every pixel.
+        f32* floatOut =
+            floatDestination ? reinterpret_cast<f32*>(context.destination->Row(row)) : nullptr;
+        for (i32 x = 0; x < width; ++x)
+        {
+            Rgba sum{};
+            for (i32 tap = 0; tap < taps; ++tap)
+            {
+                const Rgba& value = tapRows[tap][x];
+                const f32 weight = kernel.weights[tap];
+                sum.r += value.r * weight;
+                sum.g += value.g * weight;
+                sum.b += value.b * weight;
+                sum.a += value.a * weight;
+            }
+            if (context.clampNegative)
+            {
+                sum.r = std::max(sum.r, 0.0f);
+                sum.g = std::max(sum.g, 0.0f);
+                sum.b = std::max(sum.b, 0.0f);
+                sum.a = std::max(sum.a, 0.0f);
+            }
+            if (floatOut != nullptr)
+            {
+                f32* texel = floatOut + static_cast<usize>(x) * 4;
+                texel[0] = sum.r;
+                texel[1] = sum.g;
+                texel[2] = sum.b;
+                texel[3] = sum.a;
+            }
+            else
+            {
+                context.destination->SetPixel(x, row, math::Color{sum.r, sum.g, sum.b, sum.a});
+            }
+        }
     }
 }
 
@@ -312,74 +347,48 @@ core::Status<core::Error> ResolveSupersampled(const Framebuffer& source, Framebu
     const i32 destinationWidth = destination.Width();
     const i32 destinationHeight = destination.Height();
     const FilterKernel kernel = BuildFilterKernel(desc.filter, desc.factor);
-    const i32 bandRows = std::clamp(desc.bandRows, kMinBandRows, kMaxBandRows);
 
-    // Source rows one band needs: the band's own rows plus the vertical
-    // window's reach on each side.
-    const i32 bandSourceRows = bandRows * desc.factor + kernel.tapCount;
-    const usize bandSamples =
-        static_cast<usize>(bandSourceRows) * static_cast<usize>(destinationWidth);
-    void* storage = allocator.Allocate(bandSamples * sizeof(Rgba), alignof(Rgba));
+    // A fixed block count: enough blocks to keep every worker busy and to
+    // balance uneven rows, few enough that the seam overlap stays small. A
+    // single block is the serial path.
+    constexpr i32 kParallelBlocks = 16;
+    const bool useJobs = jobSystem != nullptr && desc.useJobs && destinationHeight > 1;
+    const i32 blockRows =
+        useJobs ? std::max(1, (destinationHeight + kParallelBlocks - 1) / kParallelBlocks)
+                : destinationHeight;
+    const i32 blockCount = (destinationHeight + blockRows - 1) / blockRows;
+
+    const usize samplesPerBlock =
+        static_cast<usize>(kernel.tapCount) * static_cast<usize>(destinationWidth);
+    void* storage = allocator.Allocate(
+        samplesPerBlock * static_cast<usize>(blockCount) * sizeof(Rgba), alignof(Rgba));
     if (storage == nullptr)
     {
         return Status::Err(
-            core::Error{core::ErrorCode::Internal, "failed to allocate resolve band"});
+            core::Error{core::ErrorCode::Internal, "failed to allocate resolve scratch"});
     }
-    Rgba* band = static_cast<Rgba*>(storage);
 
-    const bool useJobs = jobSystem != nullptr && desc.useJobs;
+    ResolveBlockContext context{};
+    context.source = &source;
+    context.destination = &destination;
+    context.kernel = &kernel;
+    context.scratch = static_cast<Rgba*>(storage);
+    context.scratchSamplesPerBlock = samplesPerBlock;
+    context.destinationWidth = destinationWidth;
+    context.destinationHeight = destinationHeight;
+    context.factor = desc.factor;
+    context.blockRows = blockRows;
+    context.clampNegative = desc.clampNegative;
 
-    for (i32 bandStart = 0; bandStart < destinationHeight; bandStart += bandRows)
+    if (useJobs && blockCount > 1)
     {
-        const i32 bandHeight = std::min(bandRows, destinationHeight - bandStart);
-        const i32 firstSourceRow = bandStart * desc.factor + kernel.firstOffset;
-        // Rows the band's first destination row through its last one reach:
-        // the stride between them plus one full vertical window.
-        const i32 sourceRowCount = (bandHeight - 1) * desc.factor + kernel.tapCount;
-
-        HorizontalContext horizontal{};
-        horizontal.source = &source;
-        horizontal.band = band;
-        horizontal.kernel = &kernel;
-        horizontal.destinationWidth = destinationWidth;
-        horizontal.factor = desc.factor;
-        horizontal.firstSourceRow = firstSourceRow;
-
-        const u32 rowCount = static_cast<u32>(sourceRowCount);
-        if (useJobs && rowCount > 1)
+        jobSystem->ParallelFor(static_cast<u32>(blockCount), 1, &ResolveBlock, &context);
+    }
+    else
+    {
+        for (i32 block = 0; block < blockCount; ++block)
         {
-            jobSystem->ParallelFor(rowCount, 1, &FilterSourceRow, &horizontal);
-        }
-        else
-        {
-            for (u32 row = 0; row < rowCount; ++row)
-            {
-                FilterSourceRow(&horizontal, row);
-            }
-        }
-
-        VerticalContext vertical{};
-        vertical.destination = &destination;
-        vertical.band = band;
-        vertical.kernel = &kernel;
-        vertical.destinationWidth = destinationWidth;
-        vertical.factor = desc.factor;
-        vertical.bandRowCount = sourceRowCount;
-        vertical.firstSourceRow = firstSourceRow;
-        vertical.firstDestinationRow = bandStart;
-        vertical.clampNegative = desc.clampNegative;
-
-        const u32 destinationRows = static_cast<u32>(bandHeight);
-        if (useJobs && destinationRows > 1)
-        {
-            jobSystem->ParallelFor(destinationRows, 1, &FilterDestinationRow, &vertical);
-        }
-        else
-        {
-            for (u32 row = 0; row < destinationRows; ++row)
-            {
-                FilterDestinationRow(&vertical, row);
-            }
+            ResolveBlock(&context, static_cast<u32>(block));
         }
     }
 

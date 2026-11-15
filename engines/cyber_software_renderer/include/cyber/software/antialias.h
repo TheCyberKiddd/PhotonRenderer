@@ -135,10 +135,10 @@ struct ResolveDesc
     // can undershoot at a high-contrast edge, which an sRGB encode would
     // otherwise flatten to black and show as a dark halo.
     bool clampNegative = true;
-    // Destination rows filtered per band. The band bounds the temporary buffer
-    // instead of the image, so an 8x capture does not need an intermediate the
-    // size of the supersampled target. Clamped to [1, 256]; it changes
-    // scheduling and peak memory, never the resulting image.
+    // Retained for source compatibility and ignored. The resolve streams each
+    // block of destination rows through a ring of `tapCount` filtered rows, so
+    // its scratch is a few rows rather than the image and it needs a single
+    // job-system dispatch instead of two per band.
     i32 bandRows = 32;
     // False forces the single-threaded path even when a job system is
     // supplied. Both paths write identical bytes.

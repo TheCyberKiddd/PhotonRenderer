@@ -8,6 +8,42 @@ semantic versioning once a public API exists.
 
 ### Added
 
+- Phase 34 increment 7: the rest of the Vulkan RHI `DeviceInterface`. Bind groups, pipeline
+  layouts, graphics and compute pipelines, command lists (render passes, draws, indirect
+  draws, dispatches, copies, clears, barriers, push constants, debug labels), submission,
+  device-level transitions and swapchains now work on Vulkan, with D3D12-compatible
+  conventions (flipped viewport, `Present`-state back buffers, state-derived barriers).
+  `rhi_backend_gpu_parity` runs the same RHI compute and graphics frames on D3D12 and
+  Vulkan and the outputs match. Shaders must still be SPIR-V: the shader compiler has no
+  SPIR-V output yet.
+- Phase 34 increment 6: the Vulkan RHI `DeviceInterface`, resource half. `Device::Create`
+  now succeeds on the Vulkan backend with buffers, textures (2D, array, cube, 3D,
+  depth, BC), views, samplers, SPIR-V shaders, timeline fences, queues, capabilities,
+  memory stats, debug names and the leak report. Unimplemented entries answer
+  `Unsupported` by name. `rhi_backend_parity` runs one test body on D3D12 and Vulkan.
+- Phase 34 increments 3 to 5, verified on an Intel HD Graphics 530: images, image
+  views and samplers; `VulkanCommandSystem` (command pool, `vkQueueSubmit2`, timeline
+  semaphore fence); `vulkan_barriers.h` translating RHI `ResourceState` to stage,
+  access and layout; `VulkanPipelineFactory` (descriptor layouts including an
+  update-after-bind bindless layout, pipeline layouts with push constants, compute
+  and dynamic-rendering graphics pipelines); `SpirvBuilder`, a SPIR-V module
+  writer; and `VulkanSwapchain` (Win32 surface, FIFO swapchain, recreation).
+  New tests `rhi_vulkan_commands`, `rhi_vulkan_pipelines` and `rhi_vulkan_swapchain`
+  round-trip buffers and images, run a compute shader and a rendered triangle on
+  the GPU, and present frames.
+- Phase 34 increment 2: `VulkanMemoryAllocator` (block pools per memory class and
+  type growing 8 to 256 MiB, first-fit free list with neighbour merge, dedicated
+  blocks for large requests, a driver allocation cap, persistent mapping for
+  host-visible classes, `MemoryStats` as on D3D12) and raw buffer creation, with
+  `rhi_vulkan_memory` verified on an Intel HD Graphics 530.
+- Phase 34 increment 1, the Vulkan backend foundation: `cyber/rhi/vulkan.h`
+  (`VulkanBackend()`, `IsVulkanCompiledIn()`), a hand-declared Vulkan 1.3 API
+  subset loaded at run time so no SDK is needed (ADR 0029), adapter enumeration,
+  and `VulkanContext` (instance, 1.3 feature gate, queue-family selection, logical
+  device, validation-layer error counting with synchronization validation, object
+  naming). `Backend::createDevice` answers `Unsupported` until the RHI device
+  lands; the remaining increments are listed in `docs/design/phase-34-vulkan.md`.
+  Verified on an Intel HD Graphics 530 (Vulkan 1.3).
 - Phase 33 completion: BC6H in `cyber_assets` (`DecodeBc6hBlock`,
   `EncodeBc6hBlock`, surface helpers, `FloatToHalf` / `HalfToFloat`): all 14
   modes, unsigned and signed, a decoder bit-exact with the hardware decoder
@@ -636,6 +672,11 @@ semantic versioning once a public API exists.
 
 ### Changed
 
+- `ResolveSupersampled` runs as one job-system dispatch of row blocks instead of
+  two dispatches per band and stores RGBA32F results directly (byte-identical
+  output; `ResolveDesc::bandRows` is now ignored). `samples/04_textured` skips the
+  resolve at one sample per pixel, reports per-stage timings, and adapts its
+  samples per axis to hold the frame budget; `--supersample` pins it.
 - Software renderer performance pass, measured with
   `cyber_software_frame_bench`: flat shading at 320x180 from 23.1 to 9.6 ms,
   PBR at 1280x720 from 79.2 to 51.2 ms, PBR with four point lights at 1280x720

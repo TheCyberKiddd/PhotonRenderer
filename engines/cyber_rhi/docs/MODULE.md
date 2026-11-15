@@ -163,7 +163,7 @@ renderer that includes a graphics API header.
 
 - State is tracked per `(mip, array layer)`, not per aspect: D3D12 cannot express
   a per-aspect barrier, and Vulkan's second layout is derived from one state in
-  Phase 34.
+  Phase 34 (see `docs/design/phase-34-vulkan.md`).
 - Destruction is immediate: `Destroy*` releases storage when it is called. The
   retirement queue in `retirement.h` is the caller's policy for holding an object
   until its fence passes, and it lives above the backend on purpose.

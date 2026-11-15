@@ -67,6 +67,14 @@ constexpr i32 kWindowSupersample = 2;
 constexpr i64 kMaxWindowRenderPixels = 2560 * 1440;
 constexpr i64 kMaxFramebufferDimension = 16384;
 
+// Adaptive quality. The budget is the work of one frame without the pacing
+// wait: 60 Hz leaves 16.7 ms, and a frame this far over it is not recovering.
+constexpr f64 kAdaptiveBudgetSeconds = 0.020;
+constexpr f64 kAdaptiveHeadroomSeconds = 0.006;
+constexpr i32 kAdaptiveSlowFrames = 6;
+constexpr i32 kAdaptiveFastFrames = 120;
+constexpr i32 kAdaptiveCooldownFrames = 600;
+
 struct Options
 {
     const char* capturePath = nullptr;
@@ -507,12 +515,18 @@ int RunWindow(const Options& options, Allocator& allocator)
     Framebuffer resolved;
     DepthBuffer depth;
     i32 factor = 1;
+    // Requested samples per axis. Adaptive quality moves it between 1 and
+    // `kWindowSupersample`; an explicit `--supersample` pins it.
+    i32 qualitySamples = options.supersample != 0 ? options.supersample : kWindowSupersample;
+    i32 slowFrames = 0;
+    i32 fastFrames = 0;
+    i32 cooldownFrames = 0;
     // Allocates the supersampled render target plus the present-resolution
     // target, lowering the sample count until the render fits the interactive
     // pixel ceiling. Returns false when either allocation fails.
     const auto recreateTargets = [&](i32 width, i32 height) -> bool
     {
-        i32 samples = options.supersample != 0 ? options.supersample : kWindowSupersample;
+        i32 samples = qualitySamples;
         while (samples > 1 &&
                static_cast<i64>(width) * samples * height * samples > kMaxWindowRenderPixels)
         {
@@ -575,6 +589,11 @@ int RunWindow(const Options& options, Allocator& allocator)
     bool running = true;
     f32 animationSeconds = 0.0f;
     u64 presentedFrames = 0;
+    f64 clearSeconds = 0.0;
+    f64 drawSeconds = 0.0;
+    f64 resolveSeconds = 0.0;
+    f64 packSeconds = 0.0;
+    f64 presentSeconds = 0.0;
 
     while (running && window.IsOpen())
     {
@@ -632,8 +651,11 @@ int RunWindow(const Options& options, Allocator& allocator)
         orbitInput.zoomDelta = input.WheelDelta() * 0.15f;
         UpdateOrbitCamera(orbit, orbitInput, static_cast<f32>(frameDelta));
 
+        const f64 clearStart = Clock::NowSeconds();
         FillBackground(framebuffer);
         depth.Clear(0.0f);
+        const f64 drawStart = Clock::NowSeconds();
+        clearSeconds += drawStart - clearStart;
 
         SceneUniforms uniforms{};
         const Mat4 model = Mat4::RotationY(animationSeconds * 0.6f);
@@ -647,15 +669,26 @@ int RunWindow(const Options& options, Allocator& allocator)
             std::printf("draw failed\n");
             return 1;
         }
-        if (!ResolveDownsample(framebuffer, resolved, factor, options.filter,
+        const f64 resolveStart = Clock::NowSeconds();
+        drawSeconds += resolveStart - drawStart;
+        // One sample per pixel has nothing to reconstruct: the render target is
+        // already the presented image, so the resolve (a full-frame read and
+        // write of a 128-bit-per-pixel target) is skipped.
+        const bool needsResolve = factor > 1;
+        if (needsResolve &&
+            !ResolveDownsample(framebuffer, resolved, factor, options.filter,
                                jobSystem.IsRunning() ? &jobSystem : nullptr, allocator))
         {
             std::printf("resolve failed\n");
             return 1;
         }
 
+        const f64 packStart = Clock::NowSeconds();
+        resolveSeconds += packStart - resolveStart;
+        const Framebuffer& presentSource = needsResolve ? resolved : framebuffer;
         auto packed = PackPresentPixels(
-            resolved, Span<u8>(reinterpret_cast<u8*>(presentPixels.Data()), presentPixels.Size()));
+            presentSource,
+            Span<u8>(reinterpret_cast<u8*>(presentPixels.Data()), presentPixels.Size()));
         if (!packed)
         {
             std::printf("present packing failed\n");
@@ -667,7 +700,10 @@ int RunWindow(const Options& options, Allocator& allocator)
         source.width = resolved.Width();
         source.height = resolved.Height();
         source.format = PresentFormat::RGBA8Unorm;
+        const f64 presentStart = Clock::NowSeconds();
+        packSeconds += presentStart - packStart;
         auto presented = presenter.Present(source);
+        presentSeconds += Clock::NowSeconds() - presentStart;
         if (!presented)
         {
             if (!window.IsOpen())
@@ -683,11 +719,50 @@ int RunWindow(const Options& options, Allocator& allocator)
         {
             running = false;
         }
+
+        // Adaptive quality, the software analogue of dynamic resolution: when
+        // the frame's own work (pacing excluded) keeps missing the budget the
+        // sample count per axis drops by one, and it climbs back only after a
+        // long stretch of headroom so it cannot oscillate. A fixed
+        // `--supersample` opts out.
+        if (options.supersample == 0 && running)
+        {
+            const f64 workSeconds = Clock::NowSeconds() - clearStart;
+            slowFrames = workSeconds > kAdaptiveBudgetSeconds ? slowFrames + 1 : 0;
+            fastFrames = workSeconds < kAdaptiveHeadroomSeconds ? fastFrames + 1 : 0;
+            if (cooldownFrames > 0)
+            {
+                --cooldownFrames;
+            }
+            if (slowFrames >= kAdaptiveSlowFrames && qualitySamples > 1)
+            {
+                --qualitySamples;
+                slowFrames = 0;
+                cooldownFrames = kAdaptiveCooldownFrames;
+                running = recreateTargets(resolved.Width(), resolved.Height());
+            }
+            else if (fastFrames >= kAdaptiveFastFrames && cooldownFrames == 0 &&
+                     qualitySamples < kWindowSupersample)
+            {
+                ++qualitySamples;
+                fastFrames = 0;
+                running = recreateTargets(resolved.Width(), resolved.Height());
+            }
+        }
     }
 
     std::printf("textured sample closed after %llu frames, smoothed %.2f ms (%.1f FPS)\n",
                 static_cast<unsigned long long>(pacer.FrameCount()),
                 pacer.SmoothedFrameSeconds() * 1000.0, pacer.SmoothedFramesPerSecond());
+    if (presentedFrames > 0)
+    {
+        const f64 frames = static_cast<f64>(presentedFrames);
+        std::printf("average frame at %dx: clear %.2f ms, draw %.2f ms, resolve %.2f ms, "
+                    "pack %.2f ms, present %.2f ms\n",
+                    factor, clearSeconds * 1000.0 / frames, drawSeconds * 1000.0 / frames,
+                    resolveSeconds * 1000.0 / frames, packSeconds * 1000.0 / frames,
+                    presentSeconds * 1000.0 / frames);
+    }
     return 0;
 }
 

@@ -16,6 +16,9 @@ set(CYBER_RHI_SOURCES
     src/d3d12/d3d12_tiles.cpp
     src/d3d12/gpu_markers.cpp
     src/d3d12/gpu_allocator.cpp
+    # Compiled on every platform for the same reason as the D3D12 entry point:
+    # without `CYBER_RHI_HAS_VULKAN` its fallback branch returns null.
+    src/vulkan/vulkan_backend.cpp
     src/device.cpp
     src/frame_ring.cpp
     src/null_backend.cpp
@@ -52,6 +55,7 @@ set(CYBER_RHI_HEADERS
     include/cyber/rhi/submission.h
     include/cyber/rhi/swapchain.h
     include/cyber/rhi/texture.h
+    include/cyber/rhi/vulkan.h
     include/cyber/rhi/memory.h
 )
 
@@ -79,6 +83,58 @@ if(CYBER_RHI_ENABLE_D3D12)
     # replaces it with the project's own shader pipeline, and until then it is the
     # only way a shader becomes bytecode.
     target_link_libraries(cyber_rhi PUBLIC d3d12 dxgi d3dcompiler)
+endif()
+
+if(CYBER_RHI_ENABLE_VULKAN)
+    # `PUBLIC` for the same reason as the D3D12 definition: the value decides what
+    # `IsVulkanCompiledIn()` returns and must agree with the binary a consumer links.
+    target_compile_definitions(cyber_rhi PUBLIC CYBER_RHI_HAS_VULKAN=1)
+    target_sources(cyber_rhi PRIVATE src/vulkan/vulkan_context.cpp src/vulkan/vulkan_memory.cpp
+        src/vulkan/vulkan_commands.cpp
+        src/vulkan/vulkan_pipelines.cpp
+        src/vulkan/vulkan_swapchain.cpp
+        src/vulkan/vulkan_device.cpp
+        src/vulkan/vulkan_device_gpu.cpp)
+    if(NOT WIN32)
+        target_link_libraries(cyber_rhi PUBLIC ${CMAKE_DL_LIBS})
+    endif()
+    # Runs wherever a Vulkan runtime exists and skips cleanly where it does not,
+    # so CI without a GPU stays green and a machine with one is validated.
+    cyber_add_test(
+        NAME rhi_vulkan_context
+        SOURCES tests/vulkan_context_test.cpp
+        DEPENDS rhi memory
+    )
+    cyber_add_test(
+        NAME rhi_vulkan_memory
+        SOURCES tests/vulkan_memory_test.cpp
+        DEPENDS rhi memory
+    )
+    cyber_add_test(
+        NAME rhi_vulkan_commands
+        SOURCES tests/vulkan_commands_test.cpp
+        DEPENDS rhi memory
+    )
+    cyber_add_test(
+        NAME rhi_vulkan_pipelines
+        SOURCES tests/vulkan_pipelines_test.cpp
+        DEPENDS rhi memory
+    )
+    cyber_add_test(
+        NAME rhi_vulkan_swapchain
+        SOURCES tests/vulkan_swapchain_test.cpp
+        DEPENDS rhi memory platform
+    )
+    cyber_add_test(
+        NAME rhi_backend_parity
+        SOURCES tests/backend_parity_test.cpp
+        DEPENDS rhi memory
+    )
+    cyber_add_test(
+        NAME rhi_backend_gpu_parity
+        SOURCES tests/backend_gpu_parity_test.cpp
+        DEPENDS rhi memory platform
+    )
 endif()
 
 cyber_add_test(

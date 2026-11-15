@@ -46,6 +46,8 @@ a phase actually works.
 | [design/phase-30-post-processing.md](design/phase-30-post-processing.md) | Phase 30 post chain, anti-aliasing paths, and how the ghosting bar is measured. |
 | [reports/phase-30.md](reports/phase-30.md) | Phase 30 implementation and validation evidence. |
 | [adr/0028-gi-approach.md](adr/0028-gi-approach.md) | Phase 31 choice of baked irradiance volumes, and the ray-tracing capability gate. |
+| [adr/0029-vulkan-backend.md](adr/0029-vulkan-backend.md) | Phase 34 choice of own Vulkan declarations loaded at run time, the 1.3-core requirement, and the increment plan. |
+| [design/phase-34-vulkan.md](design/phase-34-vulkan.md) | Phase 34 status, what remains, and D3D12/Vulkan behaviour differences. |
 | [design/phase-31-gi-raytracing.md](design/phase-31-gi-raytracing.md) | Phase 31 ray tracer, irradiance volume, denoiser, and how GI accuracy and leakage are measured. |
 | [reports/phase-31.md](reports/phase-31.md) | Phase 31 implementation and validation evidence. |
 | [design/phase-32-gpu-driven.md](design/phase-32-gpu-driven.md) | Phase 32 GPU culling, Hi-Z occlusion, indirect-count draws, meshlets, async compute, and how the GPU is held to the CPU culler. |

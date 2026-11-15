@@ -11,7 +11,7 @@ such as CMake targets, modules, and sample executables still use the
 ## Project status
 
 The 44-phase roadmap is complete through **Phase 33: Texture compression and
-streaming**. **Phase 34: Vulkan backend** is next. This is a pre-release
+streaming**. **Phase 34: Vulkan backend** is complete for the RHI (renderer code runs on Vulkan as on D3D12); SPIR-V output from the shader compiler is the remaining piece. This is a pre-release
 project, not a production-ready renderer; feature coverage varies by backend.
 
 Current highlights:
