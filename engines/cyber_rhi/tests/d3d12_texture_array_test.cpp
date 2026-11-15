@@ -20,6 +20,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <Windows.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -29,7 +30,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <windows.h>
 
 namespace
 {
