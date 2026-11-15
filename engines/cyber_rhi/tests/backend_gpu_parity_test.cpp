@@ -131,7 +131,8 @@ struct Gpu
 
 // Records the first failure of a recording step, with the backend's own message, so a
 // failing backend says which call it refused.
-void Check(bool& ok, const char* what, const cyber::core::Status<cyber::core::Error>& status) noexcept
+void Check(bool& ok, const char* what,
+           const cyber::core::Status<cyber::core::Error>& status) noexcept
 {
     if (ok && !status)
     {
@@ -171,7 +172,8 @@ void ReleaseFence(Gpu& gpu) noexcept
     }
 }
 
-[[nodiscard]] BufferHandle MakeBuffer(Gpu& gpu, BufferUsage usage, u64 bytes, u32 elementStride = 0) noexcept
+[[nodiscard]] BufferHandle MakeBuffer(Gpu& gpu, BufferUsage usage, u64 bytes,
+                                      u32 elementStride = 0) noexcept
 {
     BufferDesc desc{};
     desc.usage = usage;
@@ -256,7 +258,8 @@ void ReleaseFence(Gpu& gpu) noexcept
     {
         source[index] = index * 3U + 1U;
     }
-    if (!device.WriteBuffer(upload, 0, Span<const Byte>(reinterpret_cast<const Byte*>(source), bytes))
+    if (!device
+             .WriteBuffer(upload, 0, Span<const Byte>(reinterpret_cast<const Byte*>(source), bytes))
              .IsOk())
     {
         return false;
@@ -299,24 +302,25 @@ void ReleaseFence(Gpu& gpu) noexcept
         {output, ResourceState::Undefined, ResourceState::ShaderWrite}};
     Check(ok, "Barrier", list.Barrier(Span<const BufferBarrier>(before, 3)));
     Check(ok, "CopyBuffer", list.CopyBuffer(BufferCopy{upload, 0, input, 0, bytes}));
-    const BufferBarrier toRead[1] = {{input, ResourceState::CopyDestination, ResourceState::ShaderRead}};
+    const BufferBarrier toRead[1] = {
+        {input, ResourceState::CopyDestination, ResourceState::ShaderRead}};
     Check(ok, "Barrier", list.Barrier(Span<const BufferBarrier>(toRead, 1)));
     Check(ok, "SetPipeline", list.SetPipeline(pipeline.Value()));
     Check(ok, "SetBindGroup", list.SetBindGroup(BindGroupSlot::PerFrame, group.Value()));
     const u32 constants[3] = {kElements, 3, 1};
     // Same data as `source`: out = in * 3 + 1 where in = i * 3 + 1.
-    Check(ok, "PushConstants", list.PushConstants(ShaderStageBit(ShaderStage::Compute), 0,
-                                  Span<const Byte>(reinterpret_cast<const Byte*>(constants), 12)));
+    Check(ok, "PushConstants",
+          list.PushConstants(ShaderStageBit(ShaderStage::Compute), 0,
+                             Span<const Byte>(reinterpret_cast<const Byte*>(constants), 12)));
     Check(ok, "Dispatch", list.Dispatch(DispatchArguments{(kElements + 63) / 64, 1, 1}));
-    const BufferBarrier toCopy[1] = {{output, ResourceState::ShaderWrite, ResourceState::CopySource}};
+    const BufferBarrier toCopy[1] = {
+        {output, ResourceState::ShaderWrite, ResourceState::CopySource}};
     Check(ok, "Barrier", list.Barrier(Span<const BufferBarrier>(toCopy, 1)));
     Check(ok, "CopyBuffer", list.CopyBuffer(BufferCopy{output, 0, readback, 0, bytes}));
     Check(ok, "End", list.End());
     ok = ok && SubmitAndWait(gpu, list);
-    ok = ok && device
-                   .ReadBuffer(readback, 0,
-                               Span<Byte>(reinterpret_cast<Byte*>(result), bytes))
-                   .IsOk();
+    ok = ok &&
+         device.ReadBuffer(readback, 0, Span<Byte>(reinterpret_cast<Byte*>(result), bytes)).IsOk();
 
     (void)device.DestroyBindGroup(group.Value());
     {
@@ -434,7 +438,8 @@ void ReleaseFence(Gpu& gpu) noexcept
     const BufferBarrier toVertex[1] = {
         {vertexBuffer, ResourceState::Undefined, ResourceState::VertexBuffer}};
     Check(ok, "Barrier",
-          list.Barrier(Span<const BufferBarrier>(toVertex, 1), Span<const TextureBarrier>(toTarget, 1)));
+          list.Barrier(Span<const BufferBarrier>(toVertex, 1),
+                       Span<const TextureBarrier>(toTarget, 1)));
 
     ColorAttachment color{};
     color.view = view.Value();
@@ -447,8 +452,9 @@ void ReleaseFence(Gpu& gpu) noexcept
     Check(ok, "BeginRenderPass", list.BeginRenderPass(pass));
     Check(ok, "SetPipeline", list.SetPipeline(pipeline.Value()));
     Check(ok, "SetVertexBuffer", list.SetVertexBuffer(0, vertexBuffer, 0));
-    Check(ok, "SetViewport", list.SetViewport(Viewport{0, 0, static_cast<float>(kTarget),
-                                         static_cast<float>(kTarget), 0.0F, 1.0F}));
+    Check(ok, "SetViewport",
+          list.SetViewport(Viewport{0, 0, static_cast<float>(kTarget), static_cast<float>(kTarget),
+                                    0.0F, 1.0F}));
     Check(ok, "SetScissor", list.SetScissor(ScissorRect{0, 0, kTarget, kTarget}));
     Check(ok, "Draw", list.Draw(DrawArguments{3, 1, 0, 0}));
     Check(ok, "EndRenderPass", list.EndRenderPass());
@@ -466,9 +472,9 @@ void ReleaseFence(Gpu& gpu) noexcept
     Check(ok, "CopyTextureToBuffer", list.CopyTextureToBuffer(copy));
     Check(ok, "End", list.End());
     ok = ok && SubmitAndWait(gpu, list);
-    ok = ok && device
-                   .ReadBuffer(readback, 0, Span<Byte>(reinterpret_cast<Byte*>(pixels), kPixelBytes))
-                   .IsOk();
+    ok = ok &&
+         device.ReadBuffer(readback, 0, Span<Byte>(reinterpret_cast<Byte*>(pixels), kPixelBytes))
+             .IsOk();
 
     (void)device.DestroyBuffer(vertexBuffer);
     (void)device.DestroyBuffer(readback);

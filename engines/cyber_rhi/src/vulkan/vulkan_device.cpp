@@ -12,7 +12,6 @@ namespace cyber::rhi::detail
 namespace
 {
 
-
 constexpr ResourceState kGenericRead = ResourceState::CopySource | ResourceState::VertexBuffer |
                                        ResourceState::IndexBuffer | ResourceState::ConstantBuffer |
                                        ResourceState::ShaderRead | ResourceState::IndirectArgument;
@@ -48,9 +47,8 @@ u32 VkReportLeaks(const void* internal) noexcept
 {
     const VulkanRhiDevice& device = Self(internal);
     const std::lock_guard<std::mutex> lock(device.mutex);
-    return device.buffers.AliveCount() + device.textures.AliveCount() +
-           device.views.AliveCount() + device.samplers.AliveCount() +
-           device.shaders.AliveCount() + device.fences.AliveCount();
+    return device.buffers.AliveCount() + device.textures.AliveCount() + device.views.AliveCount() +
+           device.samplers.AliveCount() + device.shaders.AliveCount() + device.fences.AliveCount();
 }
 
 Status<Error> VkWaitIdle(void* internal) noexcept
@@ -65,7 +63,8 @@ Status<Error> VkCreateFence(void* internal, const FenceDesc& desc, FenceHandle* 
 {
     if (internal == nullptr || out == nullptr)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: fence creation needs a device and an output");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: fence creation needs a device and an output");
     }
     VulkanRhiDevice& device = Self(internal);
     const std::lock_guard<std::mutex> lock(device.mutex);
@@ -186,8 +185,8 @@ u64 VkFenceValue(const void* internal, FenceHandle handle) noexcept
         return 0;
     }
     u64 value = 0;
-    (void)device.context.DeviceFunctionsExt().getSemaphoreCounterValue(
-        device.context.Device(), slot->semaphore, &value);
+    (void)device.context.DeviceFunctionsExt().getSemaphoreCounterValue(device.context.Device(),
+                                                                       slot->semaphore, &value);
     return value;
 }
 
@@ -256,9 +255,9 @@ Status<Error> VkCreateBuffer(void* internal, const BufferDesc& desc, BufferHandl
     VulkanBufferDesc native{};
     native.sizeBytes = desc.sizeBytes;
     native.usage = ToVulkanBufferUsage(desc.usage);
-    native.memoryClass = hostVisible ? VulkanMemoryClass::Upload
-                                     : (readback ? VulkanMemoryClass::Readback
-                                                 : VulkanMemoryClass::DeviceLocal);
+    native.memoryClass =
+        hostVisible ? VulkanMemoryClass::Upload
+                    : (readback ? VulkanMemoryClass::Readback : VulkanMemoryClass::DeviceLocal);
     BufferSlot& slot = device.buffers.At(index);
     const Status<Error> created = device.memory.CreateBuffer(native, &slot.buffer);
     if (!created)
@@ -267,8 +266,9 @@ Status<Error> VkCreateBuffer(void* internal, const BufferDesc& desc, BufferHandl
         return created;
     }
     slot.desc = desc;
-    slot.state = hostVisible ? kGenericRead
-                             : (readback ? ResourceState::CopyDestination : ResourceState::Undefined);
+    slot.state = hostVisible
+                     ? kGenericRead
+                     : (readback ? ResourceState::CopyDestination : ResourceState::Undefined);
     CopyLabel(slot.name, desc.label);
     if (desc.label != nullptr)
     {
@@ -318,7 +318,8 @@ Status<Error> VkWriteBuffer(void* internal, BufferHandle handle, u64 offset,
     {
         return Err(ErrorCode::InvalidArgument, "vulkan backend: buffer handle is stale or invalid");
     }
-    if (!HasUsage(slot->desc.usage, BufferUsage::HostVisible) || slot->buffer.block.mapped == nullptr)
+    if (!HasUsage(slot->desc.usage, BufferUsage::HostVisible) ||
+        slot->buffer.block.mapped == nullptr)
     {
         return Err(ErrorCode::InvalidArgument,
                    "vulkan backend: buffer is not HostVisible, so it cannot be written");
@@ -481,7 +482,8 @@ Status<Error> VkDestroyTexture(void* internal, TextureHandle handle) noexcept
     TextureSlot* slot = device.textures.Resolve(handle);
     if (slot == nullptr)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: texture handle is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: texture handle is stale or invalid");
     }
     if (slot->external)
     {
@@ -530,7 +532,8 @@ ResourceState VkTextureState(const void* internal, TextureHandle handle, u32 mip
     const u32 total = slot->desc.mipLevels * slot->desc.arrayLayers;
     // Beyond the tracked count the whole texture shares one state, as in the
     // D3D12 backend.
-    const u32 index = total <= kMaxTrackedSubresources ? arrayLayer * slot->desc.mipLevels + mipLevel : 0;
+    const u32 index =
+        total <= kMaxTrackedSubresources ? arrayLayer * slot->desc.mipLevels + mipLevel : 0;
     return slot->states[index];
 }
 
@@ -764,7 +767,8 @@ Status<Error> VkDestroySampler(void* internal, SamplerHandle handle) noexcept
     SamplerSlot* slot = device.samplers.Resolve(handle);
     if (slot == nullptr)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: sampler handle is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: sampler handle is stale or invalid");
     }
     device.memory.DestroySampler(slot->sampler);
     device.samplers.Release(handle.index);
@@ -782,8 +786,9 @@ Status<Error> VkCreateShader(void* internal, const ShaderDesc& desc, ShaderHandl
     }
     if (desc.format != ShaderBytecodeFormat::SpirV)
     {
-        return Err(ErrorCode::Unsupported,
-                   "vulkan backend: shaders must be SPIR-V; the shader compiler has no SPIR-V output yet");
+        return Err(
+            ErrorCode::Unsupported,
+            "vulkan backend: shaders must be SPIR-V; the shader compiler has no SPIR-V output yet");
     }
     if (desc.code.Size() < 20 || desc.code.Size() % 4 != 0)
     {
@@ -879,19 +884,22 @@ ObjectNameInfo VkObjectName(const void* internal, const ObjectRef& object) noexc
         }
         break;
     case ObjectKind::Texture:
-        if (const TextureSlot* slot = device.textures.Resolve(UnpackHandle<TextureTag>(object.packed)))
+        if (const TextureSlot* slot =
+                device.textures.Resolve(UnpackHandle<TextureTag>(object.packed)))
         {
             name = slot->name;
         }
         break;
     case ObjectKind::TextureView:
-        if (const ViewSlot* slot = device.views.Resolve(UnpackHandle<TextureViewTag>(object.packed)))
+        if (const ViewSlot* slot =
+                device.views.Resolve(UnpackHandle<TextureViewTag>(object.packed)))
         {
             name = slot->name;
         }
         break;
     case ObjectKind::Sampler:
-        if (const SamplerSlot* slot = device.samplers.Resolve(UnpackHandle<SamplerTag>(object.packed)))
+        if (const SamplerSlot* slot =
+                device.samplers.Resolve(UnpackHandle<SamplerTag>(object.packed)))
         {
             name = slot->name;
         }
@@ -1040,7 +1048,8 @@ Status<Error> VkPipelineCacheBytes(const void*, PipelineCacheHandle, memory::All
     adapter.dedicatedVideoMemoryBytes = info.deviceLocalBytes;
     adapter.sharedSystemMemoryBytes = info.hostVisibleBytes;
     adapter.backend = BackendKind::Vulkan;
-    adapter.apiVersion = vk::VersionMajor(info.apiVersion) * 100U + vk::VersionMinor(info.apiVersion);
+    adapter.apiVersion =
+        vk::VersionMajor(info.apiVersion) * 100U + vk::VersionMinor(info.apiVersion);
 
     Limits& limits = capabilities.limits;
     limits.maxTexture1D = info.maxImageDimension1D;

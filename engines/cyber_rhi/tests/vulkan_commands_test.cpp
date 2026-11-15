@@ -116,10 +116,12 @@ CG_TEST(vulkan_state_mapping_derives_stage_access_and_layout)
 
     // One layout has to serve a set of reads: depth read plus shader read keeps the
     // depth read-only layout, an unrelated pair falls back to General.
-    CG_EXPECT_TRUE(MapResourceState(ResourceState::DepthRead | ResourceState::ShaderRead, true)
-                       .layout == kVulkanDepthStencilReadOnly);
-    CG_EXPECT_TRUE(MapResourceState(ResourceState::CopySource | ResourceState::ShaderRead, true)
-                       .layout == vk::ImageLayout::General);
+    CG_EXPECT_TRUE(
+        MapResourceState(ResourceState::DepthRead | ResourceState::ShaderRead, true).layout ==
+        kVulkanDepthStencilReadOnly);
+    CG_EXPECT_TRUE(
+        MapResourceState(ResourceState::CopySource | ResourceState::ShaderRead, true).layout ==
+        vk::ImageLayout::General);
 
     // Buffers never report a layout.
     const auto vertex = MapResourceState(ResourceState::VertexBuffer, false);
@@ -192,8 +194,8 @@ CG_TEST(vulkan_buffer_copy_roundtrips_through_device_local_memory)
     VulkanBuffer upload;
     VulkanBuffer device;
     VulkanBuffer readback;
-    CG_REQUIRE(rig.memory.CreateBuffer({kBytes, kBufferUsage, VulkanMemoryClass::Upload}, &upload)
-                   .IsOk());
+    CG_REQUIRE(
+        rig.memory.CreateBuffer({kBytes, kBufferUsage, VulkanMemoryClass::Upload}, &upload).IsOk());
     CG_REQUIRE(
         rig.memory.CreateBuffer({kBytes, kBufferUsage, VulkanMemoryClass::DeviceLocal}, &device)
             .IsOk());
@@ -223,9 +225,9 @@ CG_TEST(vulkan_buffer_copy_roundtrips_through_device_local_memory)
                            auto& s = *static_cast<State*>(user);
                            const vk::BufferCopy region{0, 0, kBytes};
                            s.ext->cmdCopyBuffer(commands, s.upload, s.device, 1, &region);
-                           const auto toRead = MakeBufferBarrier(
-                               s.device, 0, vk::kWholeSize, ResourceState::CopyDestination,
-                               ResourceState::CopySource);
+                           const auto toRead = MakeBufferBarrier(s.device, 0, vk::kWholeSize,
+                                                                 ResourceState::CopyDestination,
+                                                                 ResourceState::CopySource);
                            RecordBarriers(*s.ext, commands, &toRead, 1, nullptr, 0);
                            s.ext->cmdCopyBuffer(commands, s.device, s.readback, 1, &region);
                            HostReadBarrier(*s.ext, commands, s.readback);
@@ -250,9 +252,8 @@ CG_TEST(vulkan_fill_buffer_writes_the_pattern)
         return;
     }
     VulkanBuffer readback;
-    CG_REQUIRE(
-        rig.memory.CreateBuffer({4096, kBufferUsage, VulkanMemoryClass::Readback}, &readback)
-            .IsOk());
+    CG_REQUIRE(rig.memory.CreateBuffer({4096, kBufferUsage, VulkanMemoryClass::Readback}, &readback)
+                   .IsOk());
     std::memset(readback.block.mapped, 0, 4096);
 
     struct State
@@ -298,15 +299,15 @@ CG_TEST(vulkan_image_copy_roundtrips_with_state_barriers)
     desc.width = kSize;
     desc.height = kSize;
     desc.format = vk::Format::R8G8B8A8Unorm;
-    desc.usage = vk::ImageUsage::kTransferSrc | vk::ImageUsage::kTransferDst |
-                 vk::ImageUsage::kSampled;
+    desc.usage =
+        vk::ImageUsage::kTransferSrc | vk::ImageUsage::kTransferDst | vk::ImageUsage::kSampled;
     CG_REQUIRE(rig.memory.CreateImage(desc, &image).IsOk());
     CG_EXPECT_TRUE(image.IsValid());
 
     VulkanBuffer upload;
     VulkanBuffer readback;
-    CG_REQUIRE(rig.memory.CreateBuffer({kBytes, kBufferUsage, VulkanMemoryClass::Upload}, &upload)
-                   .IsOk());
+    CG_REQUIRE(
+        rig.memory.CreateBuffer({kBytes, kBufferUsage, VulkanMemoryClass::Upload}, &upload).IsOk());
     CG_REQUIRE(
         rig.memory.CreateBuffer({kBytes, kBufferUsage, VulkanMemoryClass::Readback}, &readback)
             .IsOk());
@@ -423,12 +424,12 @@ CG_TEST(vulkan_mipmapped_image_views_respect_their_range)
                                         3, 2, 1, 1, &slice)
                        .IsOk());
     CG_EXPECT_FALSE(rig.memory
-                        .CreateImageView(image, vk::ImageViewType::Type2D,
-                                         vk::ImageAspect::kColor, 8, 2, 0, 1, &outside)
+                        .CreateImageView(image, vk::ImageViewType::Type2D, vk::ImageAspect::kColor,
+                                         8, 2, 0, 1, &outside)
                         .IsOk());
     CG_EXPECT_FALSE(rig.memory
-                        .CreateImageView(image, vk::ImageViewType::Type2D,
-                                         vk::ImageAspect::kColor, 0, 1, 3, 2, &outside)
+                        .CreateImageView(image, vk::ImageViewType::Type2D, vk::ImageAspect::kColor,
+                                         0, 1, 3, 2, &outside)
                         .IsOk());
 
     rig.memory.DestroyImageView(slice);

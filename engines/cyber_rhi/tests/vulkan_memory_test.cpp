@@ -46,14 +46,12 @@ constexpr u64 kMiB = 1024ULL * 1024ULL;
 {
     return memory
         .Initialize(context.Device(), context.DeviceFunctions(), context.DeviceFunctionsExt(),
-                    context.MemoryProperties(),
-                    context.Info().bufferDeviceAddress)
+                    context.MemoryProperties(), context.Info().bufferDeviceAddress)
         .IsOk();
 }
 
-constexpr vk::Flags kStorageAndTransfer = vk::BufferUsage::kStorageBuffer |
-                                          vk::BufferUsage::kTransferSrc |
-                                          vk::BufferUsage::kTransferDst;
+constexpr vk::Flags kStorageAndTransfer =
+    vk::BufferUsage::kStorageBuffer | vk::BufferUsage::kTransferSrc | vk::BufferUsage::kTransferDst;
 
 }  // namespace
 
@@ -71,16 +69,17 @@ CG_TEST(vulkan_memory_serves_every_class)
     VulkanBuffer deviceLocal;
     VulkanBuffer upload;
     VulkanBuffer readback;
-    CG_REQUIRE(memory.CreateBuffer({64 * 1024, kStorageAndTransfer, VulkanMemoryClass::DeviceLocal},
-                                   &deviceLocal)
+    CG_REQUIRE(memory
+                   .CreateBuffer({64 * 1024, kStorageAndTransfer, VulkanMemoryClass::DeviceLocal},
+                                 &deviceLocal)
                    .IsOk());
     CG_REQUIRE(
         memory.CreateBuffer({64 * 1024, kStorageAndTransfer, VulkanMemoryClass::Upload}, &upload)
             .IsOk());
-    CG_REQUIRE(memory
-                   .CreateBuffer({64 * 1024, kStorageAndTransfer, VulkanMemoryClass::Readback},
-                                 &readback)
-                   .IsOk());
+    CG_REQUIRE(
+        memory
+            .CreateBuffer({64 * 1024, kStorageAndTransfer, VulkanMemoryClass::Readback}, &readback)
+            .IsOk());
 
     // Device-local memory is not mapped; the host-visible classes are, for life.
     CG_EXPECT_TRUE(deviceLocal.block.mapped == nullptr);
@@ -130,8 +129,9 @@ CG_TEST(vulkan_memory_suballocates_many_buffers_in_few_blocks)
     {
         // Sizes vary so alignment padding and splits are exercised.
         const u64 size = 256 + (index % 17) * 193;
-        CG_REQUIRE(memory.CreateBuffer({size, kStorageAndTransfer, VulkanMemoryClass::DeviceLocal},
-                                       &buffers[index])
+        CG_REQUIRE(memory
+                       .CreateBuffer({size, kStorageAndTransfer, VulkanMemoryClass::DeviceLocal},
+                                     &buffers[index])
                        .IsOk());
     }
 
@@ -178,8 +178,9 @@ CG_TEST(vulkan_memory_merges_freed_ranges_back_into_one)
     VulkanBuffer buffers[kCount];
     for (u32 index = 0; index < kCount; ++index)
     {
-        CG_REQUIRE(memory.CreateBuffer({4096, kStorageAndTransfer, VulkanMemoryClass::Upload},
-                                       &buffers[index])
+        CG_REQUIRE(memory
+                       .CreateBuffer({4096, kStorageAndTransfer, VulkanMemoryClass::Upload},
+                                     &buffers[index])
                        .IsOk());
     }
     const u64 reserved = memory.Statistics().upload.reservedBytes;
@@ -216,10 +217,11 @@ CG_TEST(vulkan_memory_reuses_freed_space_without_growing)
     VulkanBuffer buffer;
     for (u32 round = 0; round < 200; ++round)
     {
-        CG_REQUIRE(memory.CreateBuffer({100 * 1024, kStorageAndTransfer,
-                                        VulkanMemoryClass::DeviceLocal},
-                                       &buffer)
-                       .IsOk());
+        CG_REQUIRE(
+            memory
+                .CreateBuffer({100 * 1024, kStorageAndTransfer, VulkanMemoryClass::DeviceLocal},
+                              &buffer)
+                .IsOk());
         memory.DestroyBuffer(buffer);
     }
     // Churn does not leak or open new blocks: one block, nothing used.
@@ -241,8 +243,8 @@ CG_TEST(vulkan_memory_gives_large_requests_a_dedicated_block)
 
     // 64 MiB is a quarter of the largest block, the dedicated threshold.
     VulkanBuffer large;
-    const auto created =
-        memory.CreateBuffer({64 * kMiB, kStorageAndTransfer, VulkanMemoryClass::DeviceLocal}, &large);
+    const auto created = memory.CreateBuffer(
+        {64 * kMiB, kStorageAndTransfer, VulkanMemoryClass::DeviceLocal}, &large);
     if (!created)
     {
         std::printf("  skipped: %s\n", created.Error().message);
@@ -311,9 +313,9 @@ CG_TEST(vulkan_memory_shutdown_releases_everything)
             CG_REQUIRE(InitAllocator(context, memory));
             VulkanBuffer buffer;
             // Deliberately never destroyed: Shutdown must release the block.
-            CG_REQUIRE(memory.CreateBuffer({4096, kStorageAndTransfer, VulkanMemoryClass::Upload},
-                                           &buffer)
-                           .IsOk());
+            CG_REQUIRE(
+                memory.CreateBuffer({4096, kStorageAndTransfer, VulkanMemoryClass::Upload}, &buffer)
+                    .IsOk());
         }
         CG_EXPECT_EQ(context.ValidationErrorCount(), u32{0});
     }

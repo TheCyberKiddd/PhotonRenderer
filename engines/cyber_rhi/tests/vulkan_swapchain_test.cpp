@@ -1,6 +1,5 @@
-#include "vulkan_rig.h"
-
 #include "../src/vulkan/vulkan_swapchain.h"
+#include "vulkan_rig.h"
 
 #include <cyber/platform/platform.h>
 #include <cyber/test/test.h>
@@ -125,8 +124,8 @@ CG_TEST(vulkan_swapchain_presents_frames_and_the_pixels_are_right)
         const bool inspect = frame == 0;
         if (inspect)
         {
-            auto toCopy = MakeImageBarrier(swapchain.Image(image), range, ResourceState::RenderTarget,
-                                           ResourceState::CopySource);
+            auto toCopy = MakeImageBarrier(swapchain.Image(image), range,
+                                           ResourceState::RenderTarget, ResourceState::CopySource);
             RecordBarriers(ext, commands, nullptr, 0, &toCopy, 1);
             vk::BufferImageCopy copy{};
             copy.imageSubresource = vk::ImageSubresourceLayers{vk::ImageAspect::kColor, 0, 0, 1};

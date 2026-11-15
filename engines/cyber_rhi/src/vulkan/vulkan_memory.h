@@ -131,11 +131,10 @@ public:
 
     // Binds the allocator to a device. Exactly once, before any other call.
     // `memoryProperties` is copied.
-    [[nodiscard]] Status<Error> Initialize(vk::Device device, const vk::DeviceApi& functions,
-                                           const vk::DeviceApiExt& extended,
-                                           const vk::PhysicalDeviceMemoryProperties& memoryProperties,
-                                           bool deviceAddress = false,
-                                           u64 largestBlockBytes = 256ULL * 1024 * 1024) noexcept;
+    [[nodiscard]] Status<Error>
+    Initialize(vk::Device device, const vk::DeviceApi& functions, const vk::DeviceApiExt& extended,
+               const vk::PhysicalDeviceMemoryProperties& memoryProperties,
+               bool deviceAddress = false, u64 largestBlockBytes = 256ULL * 1024 * 1024) noexcept;
 
     // Declares the distinct queue families that will touch resources. With more than
     // one, new buffers and images are created `CONCURRENT` across them, which

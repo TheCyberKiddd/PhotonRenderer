@@ -6,9 +6,8 @@
 // constants, one update-after-bind bindless set, and dynamic rendering, so a
 // graphics pipeline names attachment formats instead of a render pass.
 
-#include "vulkan_context.h"
-
 #include "vk_api_ext.h"
+#include "vulkan_context.h"
 
 namespace cyber::rhi::detail
 {
@@ -67,7 +66,8 @@ public:
                                                        vk::Pipeline* out) noexcept;
     void DestroyPipeline(vk::Pipeline pipeline) noexcept;
 
-    [[nodiscard]] Status<Error> CreateDescriptorPool(u32 maxSets, const vk::DescriptorPoolSize* sizes,
+    [[nodiscard]] Status<Error> CreateDescriptorPool(u32 maxSets,
+                                                     const vk::DescriptorPoolSize* sizes,
                                                      u32 sizeCount, bool updateAfterBind,
                                                      vk::DescriptorPool* out) noexcept;
     void DestroyDescriptorPool(vk::DescriptorPool pool) noexcept;

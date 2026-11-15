@@ -6,9 +6,8 @@
 // RHI fence of ADR 0016, a value that only moves forward, so a Vulkan fence wait
 // takes a value exactly as the D3D12 one does.
 
-#include "vulkan_context.h"
-
 #include "vk_api_ext.h"
+#include "vulkan_context.h"
 
 namespace cyber::rhi::detail
 {

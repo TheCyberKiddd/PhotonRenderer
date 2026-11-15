@@ -9,21 +9,20 @@
 #include "vulkan_context.h"
 #include "vulkan_memory.h"
 #include "vulkan_pipelines.h"
+#include "vulkan_swapchain.h"
 
 #include <cyber/memory/dynamic_array.h>
 #include <cyber/memory/handle.h>
-#include "vulkan_swapchain.h"
-
 #include <cyber/rhi/binding.h>
-#include <cyber/rhi/command_list.h>
-#include <cyber/rhi/pipeline.h>
-#include <cyber/rhi/render_pass.h>
-#include <cyber/rhi/swapchain.h>
 #include <cyber/rhi/buffer.h>
 #include <cyber/rhi/capabilities.h>
+#include <cyber/rhi/command_list.h>
 #include <cyber/rhi/format.h>
+#include <cyber/rhi/pipeline.h>
+#include <cyber/rhi/render_pass.h>
 #include <cyber/rhi/sampler.h>
 #include <cyber/rhi/shader.h>
+#include <cyber/rhi/swapchain.h>
 #include <cyber/rhi/texture.h>
 
 #include <cstring>
@@ -68,37 +67,37 @@ inline void CopyLabel(char (&destination)[kNameBytes], const char* label) noexce
 
 // The Vulkan format of each RHI format, in `Format` order.
 constexpr u32 kFormatTable[] = {
-    9,   // R8Unorm
-    16,  // RG8Unorm
-    37,  // RGBA8Unorm
-    43,  // RGBA8UnormSrgb
-    44,  // BGRA8Unorm
-    50,  // BGRA8UnormSrgb
-    76,  // R16Float
-    83,  // RG16Float
-    97,  // RGBA16Float
-    100, // R32Float
-    103, // RG32Float
-    106, // R32G32B32Float
-    109, // RGBA32Float
-    98,  // R32Uint
-    101, // RG32Uint
-    107, // RGBA32Uint
-    64,  // R10G10B10A2Unorm (A2B10G10R10 pack: red in the low bits)
-    122, // RG11B10Float (B10G11R11 ufloat pack)
-    124, // D16Unorm
-    126, // D32Float
-    129, // D24UnormS8Uint
-    130, // D32FloatS8Uint
-    133, // BC1Unorm (RGBA variant)
-    134, // BC1UnormSrgb
-    137, // BC3Unorm
-    138, // BC3UnormSrgb
-    141, // BC5Unorm
-    145, // BC7Unorm
-    146, // BC7UnormSrgb
-    143, // BC6HUfloat
-    144, // BC6HSfloat
+    9,    // R8Unorm
+    16,   // RG8Unorm
+    37,   // RGBA8Unorm
+    43,   // RGBA8UnormSrgb
+    44,   // BGRA8Unorm
+    50,   // BGRA8UnormSrgb
+    76,   // R16Float
+    83,   // RG16Float
+    97,   // RGBA16Float
+    100,  // R32Float
+    103,  // RG32Float
+    106,  // R32G32B32Float
+    109,  // RGBA32Float
+    98,   // R32Uint
+    101,  // RG32Uint
+    107,  // RGBA32Uint
+    64,   // R10G10B10A2Unorm (A2B10G10R10 pack: red in the low bits)
+    122,  // RG11B10Float (B10G11R11 ufloat pack)
+    124,  // D16Unorm
+    126,  // D32Float
+    129,  // D24UnormS8Uint
+    130,  // D32FloatS8Uint
+    133,  // BC1Unorm (RGBA variant)
+    134,  // BC1UnormSrgb
+    137,  // BC3Unorm
+    138,  // BC3UnormSrgb
+    141,  // BC5Unorm
+    145,  // BC7Unorm
+    146,  // BC7UnormSrgb
+    143,  // BC6HUfloat
+    144,  // BC6HSfloat
 };
 static_assert(sizeof(kFormatTable) / sizeof(kFormatTable[0]) == kFormatCount,
               "the Vulkan format table must cover every RHI format");
@@ -121,7 +120,8 @@ template <typename Slot>
 class SlotTable
 {
 public:
-    explicit SlotTable(memory::Allocator& allocator) noexcept : m_items(allocator), m_free(allocator)
+    explicit SlotTable(memory::Allocator& allocator) noexcept
+        : m_items(allocator), m_free(allocator)
     {
     }
 
@@ -269,8 +269,6 @@ struct FenceSlot
     u32 generation = 0;
 };
 
-
-
 inline constexpr u32 kMaxLayoutEntries = 64;
 inline constexpr u32 kMaxVertexBindings = 32;
 inline constexpr u32 kMaxSwapChainImages = 4;
@@ -346,9 +344,9 @@ struct VulkanRhiDevice
     explicit VulkanRhiDevice(memory::Allocator& allocatorRef) noexcept
         : allocator(&allocatorRef), memory(allocatorRef), pipelines(context), buffers(allocatorRef),
           textures(allocatorRef), views(allocatorRef), samplers(allocatorRef),
-          shaders(allocatorRef), fences(allocatorRef), layouts(allocatorRef),
-          groups(allocatorRef), pipelineLayouts(allocatorRef), pipelineTable(allocatorRef),
-          commandLists(allocatorRef), swapChains(allocatorRef), descriptorPools(allocatorRef)
+          shaders(allocatorRef), fences(allocatorRef), layouts(allocatorRef), groups(allocatorRef),
+          pipelineLayouts(allocatorRef), pipelineTable(allocatorRef), commandLists(allocatorRef),
+          swapChains(allocatorRef), descriptorPools(allocatorRef)
     {
     }
     VulkanRhiDevice(const VulkanRhiDevice&) = delete;

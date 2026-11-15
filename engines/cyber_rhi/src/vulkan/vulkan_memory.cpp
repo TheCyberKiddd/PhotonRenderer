@@ -67,11 +67,11 @@ VulkanMemoryAllocator::~VulkanMemoryAllocator()
     Shutdown();
 }
 
-Status<Error> VulkanMemoryAllocator::Initialize(
-    vk::Device device, const vk::DeviceApi& functions,
-    const vk::DeviceApiExt& extended,
-    const vk::PhysicalDeviceMemoryProperties& memoryProperties, bool deviceAddress,
-    u64 largestBlockBytes) noexcept
+Status<Error>
+VulkanMemoryAllocator::Initialize(vk::Device device, const vk::DeviceApi& functions,
+                                  const vk::DeviceApiExt& extended,
+                                  const vk::PhysicalDeviceMemoryProperties& memoryProperties,
+                                  bool deviceAddress, u64 largestBlockBytes) noexcept
 {
     if (device == nullptr || functions.allocateMemory == nullptr ||
         functions.freeMemory == nullptr || functions.mapMemory == nullptr ||
@@ -380,7 +380,8 @@ Status<Error> VulkanMemoryAllocator::Allocate(const VulkanMemoryRequest& request
             block.memory = heap.memory;
             block.offset = offset;
             block.sizeBytes = request.sizeBytes;
-            block.mapped = heap.mapped != nullptr ? static_cast<u8*>(heap.mapped) + offset : nullptr;
+            block.mapped =
+                heap.mapped != nullptr ? static_cast<u8*>(heap.mapped) + offset : nullptr;
             block.pool = poolIndex;
             block.heap = static_cast<u32>(heapIndex);
             *out = block;
@@ -594,7 +595,6 @@ MemoryStats VulkanMemoryAllocator::Statistics() const noexcept
     return stats;
 }
 
-
 Status<Error> VulkanMemoryAllocator::CreateImage(const VulkanImageDesc& desc,
                                                  VulkanImage* out) noexcept
 {
@@ -606,8 +606,8 @@ Status<Error> VulkanMemoryAllocator::CreateImage(const VulkanImageDesc& desc,
     if (desc.width == 0 || desc.height == 0 || desc.depth == 0 || desc.mipLevels == 0 ||
         desc.arrayLayers == 0 || desc.format == vk::Format::Undefined || desc.usage == 0)
     {
-        return Status<Error>::Err(
-            Error{ErrorCode::InvalidArgument, "an image needs extent, mips, layers, format, usage"});
+        return Status<Error>::Err(Error{ErrorCode::InvalidArgument,
+                                        "an image needs extent, mips, layers, format, usage"});
     }
 
     vk::ImageCreateInfo info{};

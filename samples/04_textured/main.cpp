@@ -686,9 +686,9 @@ int RunWindow(const Options& options, Allocator& allocator)
         const f64 packStart = Clock::NowSeconds();
         resolveSeconds += packStart - resolveStart;
         const Framebuffer& presentSource = needsResolve ? resolved : framebuffer;
-        auto packed = PackPresentPixels(
-            presentSource,
-            Span<u8>(reinterpret_cast<u8*>(presentPixels.Data()), presentPixels.Size()));
+        auto packed =
+            PackPresentPixels(presentSource, Span<u8>(reinterpret_cast<u8*>(presentPixels.Data()),
+                                                      presentPixels.Size()));
         if (!packed)
         {
             std::printf("present packing failed\n");

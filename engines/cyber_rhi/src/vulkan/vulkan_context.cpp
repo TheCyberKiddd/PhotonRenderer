@@ -62,8 +62,8 @@ struct LoaderLibrary
         {
             return false;
         }
-        global.getInstanceProcAddr = reinterpret_cast<vk::PFN_GetInstanceProcAddr>(
-            Symbol(module, "vkGetInstanceProcAddr"));
+        global.getInstanceProcAddr =
+            reinterpret_cast<vk::PFN_GetInstanceProcAddr>(Symbol(module, "vkGetInstanceProcAddr"));
         if (global.getInstanceProcAddr == nullptr)
         {
             Close();
@@ -82,8 +82,7 @@ struct LoaderLibrary
         global.enumerateInstanceExtensionProperties =
             reinterpret_cast<vk::PFN_EnumerateInstanceExtensionProperties>(
                 fetch("vkEnumerateInstanceExtensionProperties"));
-        global.createInstance =
-            reinterpret_cast<vk::PFN_CreateInstance>(fetch("vkCreateInstance"));
+        global.createInstance = reinterpret_cast<vk::PFN_CreateInstance>(fetch("vkCreateInstance"));
         if (global.enumerateInstanceVersion == nullptr ||
             global.enumerateInstanceLayerProperties == nullptr ||
             global.enumerateInstanceExtensionProperties == nullptr ||
@@ -149,8 +148,9 @@ vk::Bool32 CYBER_VKAPI ValidationCallback(vk::Flags severity, vk::Flags /*types*
         {
             LockCounters(*counters);
             const usize length = std::strlen(data->pMessage);
-            const usize copied =
-                length < sizeof(counters->firstError) - 1 ? length : sizeof(counters->firstError) - 1;
+            const usize copied = length < sizeof(counters->firstError) - 1
+                                     ? length
+                                     : sizeof(counters->firstError) - 1;
             std::memcpy(counters->firstError, data->pMessage, copied);
             counters->firstError[copied] = '\0';
             counters->firstErrorLength = static_cast<u32>(copied);
@@ -221,24 +221,11 @@ template <typename Function>
     return true;
 }
 
-[[nodiscard]] bool HasName(const char* wanted, const char* const* names, u32 count) noexcept
-{
-    for (u32 index = 0; index < count; ++index)
-    {
-        if (std::strcmp(wanted, names[index]) == 0)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
 // Creates an instance, with the validation layer and debug utils when the
 // caller asked and the machine has them. Returns the Vulkan result of
 // `vkCreateInstance` when it fails.
 [[nodiscard]] ErrorCode CreateInstance(const LoaderLibrary& loader, bool wantValidation,
-                                       bool wantPresentation,
-                                       InstanceBundle& bundle) noexcept
+                                       bool wantPresentation, InstanceBundle& bundle) noexcept
 {
     const vk::GlobalApi& global = loader.global;
 
@@ -296,7 +283,8 @@ template <typename Function>
                 {
                     surfaceExtension = true;
                 }
-                if (std::strcmp(available[index].extensionName, vk::kWin32SurfaceExtensionName) == 0)
+                if (std::strcmp(available[index].extensionName, vk::kWin32SurfaceExtensionName) ==
+                    0)
                 {
                     platformSurfaceExtension = true;
                 }
@@ -693,7 +681,8 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     const LoaderLibrary& loader = context.m_loader->library;
 
     InstanceBundle bundle;
-    const ErrorCode instanceResult = CreateInstance(loader, desc.enableValidation, desc.enablePresentation, bundle);
+    const ErrorCode instanceResult =
+        CreateInstance(loader, desc.enableValidation, desc.enablePresentation, bundle);
     if (instanceResult != ErrorCode::Ok)
     {
         return Created::Err(Error{instanceResult, "vkCreateInstance failed"});
@@ -703,14 +692,15 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
 
     if (desc.requireValidation && !bundle.validationLayer)
     {
-        return Created::Err(
-            Error{ErrorCode::NotFound, "VK_LAYER_KHRONOS_validation is required and not installed"});
+        return Created::Err(Error{ErrorCode::NotFound,
+                                  "VK_LAYER_KHRONOS_validation is required and not installed"});
     }
 
     if (bundle.validationLayer && bundle.debugUtils)
     {
         vk::DebugUtilsMessengerCreateInfoEXT messenger{};
-        messenger.messageSeverity = vk::DebugUtilsSeverity::kWarning | vk::DebugUtilsSeverity::kError;
+        messenger.messageSeverity =
+            vk::DebugUtilsSeverity::kWarning | vk::DebugUtilsSeverity::kError;
         messenger.messageType =
             vk::DebugUtilsMessageType::kGeneral | vk::DebugUtilsMessageType::kValidation;
         messenger.pfnUserCallback = &ValidationCallback;
@@ -735,7 +725,8 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     api.getPhysicalDeviceProperties(physical, &properties);
     if (properties.apiVersion < kVulkanRequiredApiVersion)
     {
-        return Created::Err(Error{ErrorCode::Unsupported, "the device does not support Vulkan 1.3"});
+        return Created::Err(
+            Error{ErrorCode::Unsupported, "the device does not support Vulkan 1.3"});
     }
 
     // Queue families. Graphics must also support compute (the specification
@@ -830,7 +821,8 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     // the renderer can choose a path.
     const bool bufferDeviceAddress =
         supported12.flags[vk::Feature12::kBufferDeviceAddress] != vk::kFalse;
-    const bool drawIndirectCount = supported12.flags[vk::Feature12::kDrawIndirectCount] != vk::kFalse;
+    const bool drawIndirectCount =
+        supported12.flags[vk::Feature12::kDrawIndirectCount] != vk::kFalse;
     if (bufferDeviceAddress)
     {
         enabled12.flags[vk::Feature12::kBufferDeviceAddress] = vk::kTrue;
@@ -895,8 +887,8 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     constexpr u32 kFeatureMultiDrawIndirect = 9;
     constexpr u32 kFeatureSamplerAnisotropy = 19;
     constexpr u32 kFeatureTextureCompressionBc = 22;
-    for (const u32 index : {kFeatureMultiDrawIndirect, kFeatureSamplerAnisotropy,
-                            kFeatureTextureCompressionBc})
+    for (const u32 index :
+         {kFeatureMultiDrawIndirect, kFeatureSamplerAnisotropy, kFeatureTextureCompressionBc})
     {
         enabled.features.flags[index] = supported.features.flags[index];
     }
@@ -924,7 +916,8 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     vk::DeviceApi& deviceApi = context.m_deviceApi;
     const auto resolveDevice = [&](const char* name) noexcept
     { return api.getDeviceProcAddr(device, name); };
-    deviceApi.destroyDevice = reinterpret_cast<vk::PFN_DestroyDevice>(resolveDevice("vkDestroyDevice"));
+    deviceApi.destroyDevice =
+        reinterpret_cast<vk::PFN_DestroyDevice>(resolveDevice("vkDestroyDevice"));
     deviceApi.getDeviceQueue =
         reinterpret_cast<vk::PFN_GetDeviceQueue>(resolveDevice("vkGetDeviceQueue"));
     deviceApi.deviceWaitIdle =
@@ -962,15 +955,18 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
             loader.global.getInstanceProcAddr(bundle.instance, name));
         return slot != nullptr;
     };
-#define CYBER_VK_RESOLVE_DEVICE(member, name, type) extEntries = resolveInto(context.m_deviceExt.member, name) && extEntries;
+#define CYBER_VK_RESOLVE_DEVICE(member, name, type)                                                \
+    extEntries = resolveInto(context.m_deviceExt.member, name) && extEntries;
     CYBER_VK_DEVICE_FUNCTIONS_EXT(CYBER_VK_RESOLVE_DEVICE)
 #undef CYBER_VK_RESOLVE_DEVICE
     if (presentation)
     {
-#define CYBER_VK_RESOLVE_SWAPCHAIN(member, name, type) presentation = resolveInto(context.m_swapchainApi.member, name) && presentation;
+#define CYBER_VK_RESOLVE_SWAPCHAIN(member, name, type)                                             \
+    presentation = resolveInto(context.m_swapchainApi.member, name) && presentation;
         CYBER_VK_SWAPCHAIN_FUNCTIONS(CYBER_VK_RESOLVE_SWAPCHAIN)
 #undef CYBER_VK_RESOLVE_SWAPCHAIN
-#define CYBER_VK_RESOLVE_SURFACE(member, name, type) presentation = resolveSurface(context.m_surfaceApi.member, name) && presentation;
+#define CYBER_VK_RESOLVE_SURFACE(member, name, type)                                               \
+    presentation = resolveSurface(context.m_surfaceApi.member, name) && presentation;
         CYBER_VK_SURFACE_FUNCTIONS(CYBER_VK_RESOLVE_SURFACE)
 #undef CYBER_VK_RESOLVE_SURFACE
     }
@@ -1002,7 +998,8 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     info.bufferDeviceAddress = bufferDeviceAddress;
     info.presentation = presentation;
     info.samplerAnisotropy = supported.features.flags[kFeatureSamplerAnisotropy] != vk::kFalse;
-    info.textureCompressionBc = supported.features.flags[kFeatureTextureCompressionBc] != vk::kFalse;
+    info.textureCompressionBc =
+        supported.features.flags[kFeatureTextureCompressionBc] != vk::kFalse;
     info.multiDrawIndirect = supported.features.flags[kFeatureMultiDrawIndirect] != vk::kFalse;
     {
         // The first five members of `VkPhysicalDeviceLimits` are the image
@@ -1088,7 +1085,8 @@ Status<Error> VulkanContext::SetObjectName(vk::ObjectType type, u64 handle,
     info.pObjectName = name;
     if (m_deviceApi.setDebugUtilsObjectName(m_device, &info) != vk::Result::Success)
     {
-        return Status<Error>::Err(Error{ErrorCode::Internal, "vkSetDebugUtilsObjectNameEXT failed"});
+        return Status<Error>::Err(
+            Error{ErrorCode::Internal, "vkSetDebugUtilsObjectNameEXT failed"});
     }
     return Status<Error>::Ok();
 }

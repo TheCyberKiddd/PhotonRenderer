@@ -129,7 +129,8 @@ Result<VulkanSwapchain, Error> VulkanSwapchain::Create(VulkanContext& context, v
     using Created = Result<VulkanSwapchain, Error>;
     if (!context.IsValid() || windowHandle == nullptr)
     {
-        return Created::Err(Error{ErrorCode::InvalidArgument, "swapchain needs a context and a window"});
+        return Created::Err(
+            Error{ErrorCode::InvalidArgument, "swapchain needs a context and a window"});
     }
     if (!context.Info().presentation)
     {
@@ -152,10 +153,9 @@ Result<VulkanSwapchain, Error> VulkanSwapchain::Create(VulkanContext& context, v
 
     // The graphics queue presents, so its family has to be able to.
     vk::Bool32 supported = vk::kFalse;
-    if (context.SurfaceFunctions().getSurfaceSupport(context.PhysicalDevice(),
-                                                     context.Info().queues.graphics,
-                                                     swapchain.m_surface, &supported) !=
-            vk::Result::Success ||
+    if (context.SurfaceFunctions().getSurfaceSupport(
+            context.PhysicalDevice(), context.Info().queues.graphics, swapchain.m_surface,
+            &supported) != vk::Result::Success ||
         supported == vk::kFalse)
     {
         return Created::Err(
@@ -209,8 +209,8 @@ Status<Error> VulkanSwapchain::Build(u32 width, u32 height) noexcept
 
     vk::SurfaceFormatKHR formats[32] = {};
     u32 formatCount = 32;
-    const vk::Result listedFormats = surfaceApi.getSurfaceFormats(
-        m_context->PhysicalDevice(), m_surface, &formatCount, formats);
+    const vk::Result listedFormats =
+        surfaceApi.getSurfaceFormats(m_context->PhysicalDevice(), m_surface, &formatCount, formats);
     if ((listedFormats != vk::Result::Success && listedFormats != vk::Result::Incomplete) ||
         formatCount == 0)
     {
@@ -290,7 +290,8 @@ Status<Error> VulkanSwapchain::Build(u32 width, u32 height) noexcept
     m_extent = extent;
 
     u32 count = kMaxSwapchainImages;
-    const vk::Result gotImages = swapchainApi.getSwapchainImages(device, m_swapchain, &count, m_images);
+    const vk::Result gotImages =
+        swapchainApi.getSwapchainImages(device, m_swapchain, &count, m_images);
     if ((gotImages != vk::Result::Success && gotImages != vk::Result::Incomplete) || count == 0)
     {
         return Status<Error>::Err(Error{ErrorCode::Internal, "vkGetSwapchainImagesKHR failed"});

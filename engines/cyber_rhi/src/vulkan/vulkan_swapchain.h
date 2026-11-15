@@ -6,9 +6,8 @@
 // image/view handles the renderer targets. Linux and Android surfaces arrive with
 // their window backends; `Create` reports `Unsupported` there.
 
-#include "vulkan_context.h"
-
 #include "vk_api_ext.h"
+#include "vulkan_context.h"
 
 namespace cyber::rhi::detail
 {
@@ -38,9 +37,8 @@ public:
     // enabled and must outlive the swapchain. `ErrorCode::Unsupported` when the
     // context has no presentation support or the graphics queue cannot present to
     // this surface.
-    [[nodiscard]] static Result<VulkanSwapchain, Error> Create(VulkanContext& context,
-                                                               void* windowHandle, u32 width,
-                                                               u32 height) noexcept;
+    [[nodiscard]] static Result<VulkanSwapchain, Error>
+    Create(VulkanContext& context, void* windowHandle, u32 width, u32 height) noexcept;
 
     [[nodiscard]] bool IsValid() const noexcept
     {
@@ -75,10 +73,9 @@ public:
     // submit that draws into the image must wait on; `renderFinished` is the one it
     // must signal, and `Present` waits on it. Both are owned by the swapchain.
     // Returns `NeedsRecreate` instead of an image when the surface changed.
-    [[nodiscard]] Result<VulkanPresentResult, Error> Acquire(u32* imageIndex,
-                                                             vk::Semaphore* imageAvailable,
-                                                             vk::Semaphore* renderFinished,
-                                                             u64 timeoutNanoseconds = ~0ULL) noexcept;
+    [[nodiscard]] Result<VulkanPresentResult, Error>
+    Acquire(u32* imageIndex, vk::Semaphore* imageAvailable, vk::Semaphore* renderFinished,
+            u64 timeoutNanoseconds = ~0ULL) noexcept;
 
     [[nodiscard]] Result<VulkanPresentResult, Error> Present(u32 imageIndex,
                                                              vk::Semaphore renderFinished) noexcept;

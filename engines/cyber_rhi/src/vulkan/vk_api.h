@@ -451,9 +451,9 @@ struct DebugUtilsMessengerCallbackDataEXT
     const DebugUtilsObjectNameInfoEXT* pObjects;
 };
 
-using DebugUtilsMessengerCallbackEXT = Bool32(CYBER_VKAPI*)(
-    Flags messageSeverity, Flags messageTypes, const DebugUtilsMessengerCallbackDataEXT* pCallbackData,
-    void* pUserData);
+using DebugUtilsMessengerCallbackEXT =
+    Bool32(CYBER_VKAPI*)(Flags messageSeverity, Flags messageTypes,
+                         const DebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData);
 
 struct DebugUtilsMessengerCreateInfoEXT
 {
@@ -479,7 +479,8 @@ using PFN_EnumerateInstanceExtensionProperties = Result(CYBER_VKAPI*)(const char
 using PFN_CreateInstance = Result(CYBER_VKAPI*)(const InstanceCreateInfo*, const void*, Instance*);
 using PFN_DestroyInstance = void(CYBER_VKAPI*)(Instance, const void*);
 using PFN_EnumeratePhysicalDevices = Result(CYBER_VKAPI*)(Instance, u32*, PhysicalDevice*);
-using PFN_GetPhysicalDeviceProperties = void(CYBER_VKAPI*)(PhysicalDevice, PhysicalDeviceProperties*);
+using PFN_GetPhysicalDeviceProperties = void(CYBER_VKAPI*)(PhysicalDevice,
+                                                           PhysicalDeviceProperties*);
 using PFN_GetPhysicalDeviceMemoryProperties = void(CYBER_VKAPI*)(PhysicalDevice,
                                                                  PhysicalDeviceMemoryProperties*);
 using PFN_GetPhysicalDeviceQueueFamilyProperties = void(CYBER_VKAPI*)(PhysicalDevice, u32*,
@@ -493,12 +494,13 @@ using PFN_DestroyDevice = void(CYBER_VKAPI*)(Device, const void*);
 using PFN_GetDeviceQueue = void(CYBER_VKAPI*)(Device, u32, u32, Queue*);
 using PFN_DeviceWaitIdle = Result(CYBER_VKAPI*)(Device);
 using PFN_AllocateMemory = Result(CYBER_VKAPI*)(Device, const MemoryAllocateInfo*, const void*,
-                                                  DeviceMemory*);
+                                                DeviceMemory*);
 using PFN_FreeMemory = void(CYBER_VKAPI*)(Device, DeviceMemory, const void*);
 using PFN_MapMemory = Result(CYBER_VKAPI*)(Device, DeviceMemory, DeviceSize, DeviceSize, Flags,
                                            void**);
 using PFN_UnmapMemory = void(CYBER_VKAPI*)(Device, DeviceMemory);
-using PFN_CreateBuffer = Result(CYBER_VKAPI*)(Device, const BufferCreateInfo*, const void*, Buffer*);
+using PFN_CreateBuffer = Result(CYBER_VKAPI*)(Device, const BufferCreateInfo*, const void*,
+                                              Buffer*);
 using PFN_DestroyBuffer = void(CYBER_VKAPI*)(Device, Buffer, const void*);
 using PFN_GetBufferMemoryRequirements = void(CYBER_VKAPI*)(Device, Buffer, MemoryRequirements*);
 using PFN_BindBufferMemory = Result(CYBER_VKAPI*)(Device, Buffer, DeviceMemory, DeviceSize);

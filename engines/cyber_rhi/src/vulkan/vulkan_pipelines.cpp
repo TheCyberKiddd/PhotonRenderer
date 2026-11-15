@@ -72,9 +72,8 @@ Status<Error> VulkanPipelineFactory::CreateSetLayout(const VulkanBindingDesc* bi
     info.flags = updateAfterBind ? vk::kDescriptorSetLayoutUpdateAfterBindPool : 0;
     info.bindingCount = count;
     info.pBindings = native;
-    if (m_context->DeviceFunctionsExt().createDescriptorSetLayout(m_context->Device(), &info,
-                                                                  nullptr, out) !=
-        vk::Result::Success)
+    if (m_context->DeviceFunctionsExt().createDescriptorSetLayout(
+            m_context->Device(), &info, nullptr, out) != vk::Result::Success)
     {
         return Fail("vkCreateDescriptorSetLayout failed");
     }
@@ -216,9 +215,8 @@ Status<Error> VulkanPipelineFactory::CreateGraphicsPipeline(const VulkanGraphics
     info.pColorBlendState = &blend;
     info.pDynamicState = &dynamic;
     info.layout = desc.layout;
-    if (m_context->DeviceFunctionsExt().createGraphicsPipelines(m_context->Device(), 0, 1, &info,
-                                                                nullptr, out) !=
-        vk::Result::Success)
+    if (m_context->DeviceFunctionsExt().createGraphicsPipelines(
+            m_context->Device(), 0, 1, &info, nullptr, out) != vk::Result::Success)
     {
         return Fail("vkCreateGraphicsPipelines failed");
     }

@@ -110,8 +110,7 @@ void CheckBuffers(Device& device)
             .IsOk());
 
     // The label a caller gave is what the object reports back.
-    const ObjectNameInfo name =
-        device.ObjectName(RefOf(ObjectKind::Buffer, uploadBuffer.Value()));
+    const ObjectNameInfo name = device.ObjectName(RefOf(ObjectKind::Buffer, uploadBuffer.Value()));
     CG_EXPECT_TRUE(name.named);
     CG_EXPECT_STREQ(name.name, "parity upload");
     CG_EXPECT_FALSE(device.ObjectName(RefOf(ObjectKind::Buffer, localBuffer.Value())).named);

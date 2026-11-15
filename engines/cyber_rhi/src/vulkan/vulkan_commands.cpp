@@ -121,8 +121,8 @@ Status<Error> VulkanCommandSystem::BeginRecording(vk::CommandBuffer* out) noexce
     return Status<Error>::Ok();
 }
 
-Status<Error> VulkanCommandSystem::Submit(vk::CommandBuffer commands,
-                                          const VulkanSubmitSync& sync, u64* signalValue) noexcept
+Status<Error> VulkanCommandSystem::Submit(vk::CommandBuffer commands, const VulkanSubmitSync& sync,
+                                          u64* signalValue) noexcept
 {
     if (!IsValid() || commands == nullptr)
     {
@@ -195,8 +195,8 @@ Status<Error> VulkanCommandSystem::Wait(u64 value, u64 timeoutNanoseconds) noexc
     wait.semaphoreCount = 1;
     wait.pSemaphores = &m_timeline;
     wait.pValues = &value;
-    const vk::Result result =
-        m_context->DeviceFunctionsExt().waitSemaphores(m_context->Device(), &wait, timeoutNanoseconds);
+    const vk::Result result = m_context->DeviceFunctionsExt().waitSemaphores(
+        m_context->Device(), &wait, timeoutNanoseconds);
     if (result == vk::Result::Timeout)
     {
         return Status<Error>::Err(Error{ErrorCode::Busy, "timeline wait timed out"});

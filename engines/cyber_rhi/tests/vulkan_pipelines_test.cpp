@@ -1,7 +1,6 @@
-#include "vulkan_rig.h"
-
 #include "../src/vulkan/spirv_builder.h"
 #include "spirv_test_shaders.h"
+#include "vulkan_rig.h"
 
 #include <cyber/memory/dynamic_array.h>
 #include <cyber/test/test.h>
@@ -154,14 +153,14 @@ CG_TEST(vulkan_compute_shader_runs_with_descriptors_and_push_constants)
     VulkanBuffer readback;
     CG_REQUIRE(
         rig.memory.CreateBuffer({kBytes, kBufferUsage, VulkanMemoryClass::Upload}, &input).IsOk());
-    CG_REQUIRE(rig.memory
-                   .CreateBuffer({kBytes + kGuard, kBufferUsage, VulkanMemoryClass::DeviceLocal},
-                                 &output)
-                   .IsOk());
-    CG_REQUIRE(rig.memory
-                   .CreateBuffer({kBytes + kGuard, kBufferUsage, VulkanMemoryClass::Readback},
-                                 &readback)
-                   .IsOk());
+    CG_REQUIRE(
+        rig.memory
+            .CreateBuffer({kBytes + kGuard, kBufferUsage, VulkanMemoryClass::DeviceLocal}, &output)
+            .IsOk());
+    CG_REQUIRE(
+        rig.memory
+            .CreateBuffer({kBytes + kGuard, kBufferUsage, VulkanMemoryClass::Readback}, &readback)
+            .IsOk());
     auto* in = static_cast<u32*>(input.block.mapped);
     for (u32 i = 0; i < kCount; ++i)
     {
@@ -192,29 +191,29 @@ CG_TEST(vulkan_compute_shader_runs_with_descriptors_and_push_constants)
         vk::Buffer readback;
     } state{&ext, pipeline, layout, set, output.buffer, readback.buffer};
 
-    CG_REQUIRE(
-        rig.commands
-            .RunImmediate(
-                [](vk::CommandBuffer commands, void* user)
-                {
-                    auto& s = *static_cast<State*>(user);
-                    const u32 constants[3] = {kCount, 7, 5};
-                    s.ext->cmdBindPipeline(commands, 1, s.pipeline);
-                    s.ext->cmdBindDescriptorSets(commands, 1, s.layout, 0, 1, &s.set, 0, nullptr);
-                    s.ext->cmdPushConstants(commands, s.layout, vk::ShaderStage::kCompute, 0, 12,
-                                            constants);
-                    s.ext->cmdDispatch(commands, (kCount + 63) / 64, 1, 1);
-                    const auto toCopy = MakeBufferBarrier(s.output, 0, vk::kWholeSize,
-                                                          ResourceState::ShaderWrite,
-                                                          ResourceState::CopySource);
-                    RecordBarriers(*s.ext, commands, &toCopy, 1, nullptr, 0);
-                    const vk::BufferCopy region{0, 0, kBytes + kGuard};
-                    s.ext->cmdCopyBuffer(commands, s.output, s.readback, 1, &region);
-                    HostReadBarrier(*s.ext, commands, s.readback, vk::Stage2::kAllTransfer,
-                                    vk::Access2::kTransferWrite);
-                },
-                &state)
-            .IsOk());
+    CG_REQUIRE(rig.commands
+                   .RunImmediate(
+                       [](vk::CommandBuffer commands, void* user)
+                       {
+                           auto& s = *static_cast<State*>(user);
+                           const u32 constants[3] = {kCount, 7, 5};
+                           s.ext->cmdBindPipeline(commands, 1, s.pipeline);
+                           s.ext->cmdBindDescriptorSets(commands, 1, s.layout, 0, 1, &s.set, 0,
+                                                        nullptr);
+                           s.ext->cmdPushConstants(commands, s.layout, vk::ShaderStage::kCompute, 0,
+                                                   12, constants);
+                           s.ext->cmdDispatch(commands, (kCount + 63) / 64, 1, 1);
+                           const auto toCopy = MakeBufferBarrier(s.output, 0, vk::kWholeSize,
+                                                                 ResourceState::ShaderWrite,
+                                                                 ResourceState::CopySource);
+                           RecordBarriers(*s.ext, commands, &toCopy, 1, nullptr, 0);
+                           const vk::BufferCopy region{0, 0, kBytes + kGuard};
+                           s.ext->cmdCopyBuffer(commands, s.output, s.readback, 1, &region);
+                           HostReadBarrier(*s.ext, commands, s.readback, vk::Stage2::kAllTransfer,
+                                           vk::Access2::kTransferWrite);
+                       },
+                       &state)
+                   .IsOk());
 
     const auto* result = static_cast<const u32*>(readback.block.mapped);
     u32 wrong = 0;
@@ -325,8 +324,8 @@ CG_TEST(vulkan_graphics_pipeline_renders_with_dynamic_rendering)
                     rendering.pColorAttachments = &color;
                     s.ext->cmdBeginRendering(commands, &rendering);
                     s.ext->cmdBindPipeline(commands, 0, s.pipeline);
-                    const vk::Viewport viewport{0, 0, static_cast<float>(kSize),
-                                                static_cast<float>(kSize), 0, 1};
+                    const vk::Viewport viewport{
+                        0, 0, static_cast<float>(kSize), static_cast<float>(kSize), 0, 1};
                     const vk::Rect2D scissor{{0, 0}, {kSize, kSize}};
                     s.ext->cmdSetViewport(commands, 0, 1, &viewport);
                     s.ext->cmdSetScissor(commands, 0, 1, &scissor);
@@ -355,7 +354,8 @@ CG_TEST(vulkan_graphics_pipeline_renders_with_dynamic_rendering)
     const auto* pixels = static_cast<const u8*>(readback.block.mapped);
     const auto at = [pixels](u32 x, u32 y, u32 channel) -> int
     { return pixels[(y * kSize + x) * 4 + channel]; };
-    const auto near = [](int a, int b, int tolerance) { return a - b <= tolerance && b - a <= tolerance; };
+    const auto near = [](int a, int b, int tolerance)
+    { return a - b <= tolerance && b - a <= tolerance; };
 
     // The red corner is the top-left of the target (Vulkan's NDC y is down), the
     // green corner is off to the right and the blue one below, so the top-left
@@ -396,13 +396,11 @@ CG_TEST(vulkan_bindless_layout_accepts_partially_bound_variable_arrays)
     }
     // The bindless table of ADR 0022: a large array of sampled images, partially
     // populated, sized at allocation, updated after it is bound.
-    const VulkanBindingDesc binding{
-        0,
-        vk::DescriptorType::SampledImage,
-        1024,
-        vk::ShaderStage::kFragment | vk::ShaderStage::kCompute,
-        vk::DescriptorBindingFlag::kUpdateAfterBind | vk::DescriptorBindingFlag::kPartiallyBound |
-            vk::DescriptorBindingFlag::kVariableDescriptorCount};
+    const VulkanBindingDesc binding{0, vk::DescriptorType::SampledImage, 1024,
+                                    vk::ShaderStage::kFragment | vk::ShaderStage::kCompute,
+                                    vk::DescriptorBindingFlag::kUpdateAfterBind |
+                                        vk::DescriptorBindingFlag::kPartiallyBound |
+                                        vk::DescriptorBindingFlag::kVariableDescriptorCount};
     vk::DescriptorSetLayout layout = 0;
     CG_REQUIRE(rig.pipelines.CreateSetLayout(&binding, 1, &layout).IsOk());
     const vk::DescriptorPoolSize size{vk::DescriptorType::SampledImage, 1024};

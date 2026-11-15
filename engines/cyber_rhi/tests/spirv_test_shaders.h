@@ -252,7 +252,6 @@ inline bool BuildColorFragment(SpirvBuilder& b, DynamicArray<u32>& out) noexcept
     return b.Finish(out).IsOk();
 }
 
-
 // Writes the interpolated colour with alpha one and no push constants.
 //
 //   layout(location = 0) in vec3 color;

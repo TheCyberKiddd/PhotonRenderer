@@ -184,7 +184,8 @@ void SetTrackedState(TextureSlot& texture, const ResolvedRange& range, ResourceS
     {
         for (u32 mip = range.mip; mip < range.mip + range.mipCount; ++mip)
         {
-            const u32 index = total <= kMaxTrackedSubresources ? layer * texture.desc.mipLevels + mip : 0;
+            const u32 index =
+                total <= kMaxTrackedSubresources ? layer * texture.desc.mipLevels + mip : 0;
             texture.states[index] = state;
         }
     }
@@ -331,7 +332,8 @@ constexpr u32 kPoolDescriptorsPerType = 4096;
     if (!bufferInfos.TryResize(layout.descriptorCount) ||
         !imageInfos.TryResize(layout.descriptorCount) || !writes.TryResize(layout.entryCount))
     {
-        return Err(ErrorCode::Internal, "vulkan backend: descriptor write scratch failed to allocate");
+        return Err(ErrorCode::Internal,
+                   "vulkan backend: descriptor write scratch failed to allocate");
     }
 
     u32 cursor = 0;
@@ -362,8 +364,9 @@ constexpr u32 kPoolDescriptorsPerType = 4096;
                 }
                 if (resource.offset > buffer->desc.sizeBytes)
                 {
-                    return Err(ErrorCode::OutOfRange,
-                               "vulkan backend: a buffer binding starts past the end of the buffer");
+                    return Err(
+                        ErrorCode::OutOfRange,
+                        "vulkan backend: a buffer binding starts past the end of the buffer");
                 }
                 vk::DescriptorBufferInfo& info = bufferInfos[cursor + element];
                 info.buffer = buffer->buffer.buffer;
@@ -389,10 +392,11 @@ constexpr u32 kPoolDescriptorsPerType = 4096;
                     return Err(ErrorCode::InvalidArgument,
                                "vulkan backend: a bound texture view is stale or invalid");
                 }
-                imageInfos[cursor + element] = vk::DescriptorImageInfo{
-                    0, view->view,
-                    entry.type == BindingType::StorageTexture ? vk::ImageLayout::General
-                                                              : vk::ImageLayout::ShaderReadOnlyOptimal};
+                imageInfos[cursor + element] =
+                    vk::DescriptorImageInfo{0, view->view,
+                                            entry.type == BindingType::StorageTexture
+                                                ? vk::ImageLayout::General
+                                                : vk::ImageLayout::ShaderReadOnlyOptimal};
             }
         }
         if (IsBufferBinding(entry.type))
@@ -472,8 +476,8 @@ Status<Error> VkCreateBindGroup(void* internal, const BindGroupDesc& desc,
     const Status<Error> written = WriteGroup(device, *layout, slot.set, desc.resources);
     if (!written)
     {
-        (void)ext.freeDescriptorSets(device.context.Device(),
-                                     device.descriptorPools[slot.pool], 1, &slot.set);
+        (void)ext.freeDescriptorSets(device.context.Device(), device.descriptorPools[slot.pool], 1,
+                                     &slot.set);
         device.groups.Release(slotIndex);
         return written;
     }
@@ -571,10 +575,11 @@ Status<Error> VkCreatePipelineLayout(void* internal, const PipelineLayoutDesc& d
     for (usize index = 0; index < desc.pushConstants.Size(); ++index)
     {
         const PushConstantRange& range = desc.pushConstants[index];
-        ranges[index] = vk::PushConstantRange{ToStageFlags(range.stages), range.offsetBytes,
-                                              range.sizeBytes};
-        pushBytes = range.offsetBytes + range.sizeBytes > pushBytes ? range.offsetBytes + range.sizeBytes
-                                                                   : pushBytes;
+        ranges[index] =
+            vk::PushConstantRange{ToStageFlags(range.stages), range.offsetBytes, range.sizeBytes};
+        pushBytes = range.offsetBytes + range.sizeBytes > pushBytes
+                        ? range.offsetBytes + range.sizeBytes
+                        : pushBytes;
     }
 
     u32 slotIndex = 0;
@@ -584,7 +589,8 @@ Status<Error> VkCreatePipelineLayout(void* internal, const PipelineLayoutDesc& d
     }
     PipelineLayoutSlot& slot = device.pipelineLayouts.At(slotIndex);
     const Status<Error> created = device.pipelines.CreatePipelineLayout(
-        sets, kBindGroupSlotCount, ranges, static_cast<u32>(desc.pushConstants.Size()), &slot.layout);
+        sets, kBindGroupSlotCount, ranges, static_cast<u32>(desc.pushConstants.Size()),
+        &slot.layout);
     if (!created)
     {
         device.pipelineLayouts.Release(slotIndex);
@@ -634,8 +640,8 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
     }
     if (desc.rasterizer.polygonMode != PolygonMode::Fill || !desc.rasterizer.depthClipEnabled)
     {
-        return Err(ErrorCode::Unsupported,
-                   "vulkan backend: wireframe and disabled depth clip need device features that are not enabled");
+        return Err(ErrorCode::Unsupported, "vulkan backend: wireframe and disabled depth clip need "
+                                           "device features that are not enabled");
     }
     if (desc.colorAttachments.Size() > kMaxColorAttachments ||
         desc.vertexLayout.bindings.Size() > kMaxVertexBindings)
@@ -697,8 +703,8 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
         {
             return Err(ErrorCode::InvalidArgument, "vulkan backend: a vertex format is not valid");
         }
-        attributes[index] = vk::VertexInputAttributeDescription{attribute.location, attribute.binding,
-                                                                format, attribute.offsetBytes};
+        attributes[index] = vk::VertexInputAttributeDescription{
+            attribute.location, attribute.binding, format, attribute.offsetBytes};
     }
     vk::PipelineVertexInputStateCreateInfo vertexInput{};
     vertexInput.vertexBindingDescriptionCount = static_cast<u32>(desc.vertexLayout.bindings.Size());
@@ -712,10 +718,9 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
 
     vk::PipelineRasterizationStateCreateInfo raster{};
     raster.cullMode = static_cast<vk::Flags>(desc.rasterizer.cullMode);  // none, front, back
-    raster.frontFace =
-        desc.rasterizer.frontFace == FrontFace::Clockwise ? 1U : 0U;
-    const bool bias = desc.rasterizer.depthBiasConstant != 0.0F ||
-                      desc.rasterizer.depthBiasSlope != 0.0F;
+    raster.frontFace = desc.rasterizer.frontFace == FrontFace::Clockwise ? 1U : 0U;
+    const bool bias =
+        desc.rasterizer.depthBiasConstant != 0.0F || desc.rasterizer.depthBiasSlope != 0.0F;
     raster.depthBiasEnable = bias ? vk::kTrue : vk::kFalse;
     raster.depthBiasConstantFactor = desc.rasterizer.depthBiasConstant;
     raster.depthBiasSlopeFactor = desc.rasterizer.depthBiasSlope;
@@ -740,7 +745,8 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
     };
     vk::PipelineDepthStencilStateCreateInfo depth{};
     depth.depthTestEnable = hasDepth && desc.depthStencil.depthTestEnabled ? vk::kTrue : vk::kFalse;
-    depth.depthWriteEnable = hasDepth && desc.depthStencil.depthWriteEnabled ? vk::kTrue : vk::kFalse;
+    depth.depthWriteEnable =
+        hasDepth && desc.depthStencil.depthWriteEnabled ? vk::kTrue : vk::kFalse;
     depth.depthCompareOp =
         static_cast<vk::CompareOp>(static_cast<u32>(desc.depthStencil.depthCompare));
     depth.stencilTestEnable = hasDepth && desc.depthStencil.stencilEnabled ? vk::kTrue : vk::kFalse;
@@ -887,7 +893,8 @@ Status<Error> VkDestroyPipeline(void* internal, PipelineHandle handle) noexcept
     PipelineSlot* slot = device.pipelineTable.Resolve(handle);
     if (slot == nullptr)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: pipeline handle is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: pipeline handle is stale or invalid");
     }
     device.pipelines.DestroyPipeline(slot->pipeline);
     device.pipelineTable.Release(handle.index);
@@ -964,7 +971,8 @@ template <typename Record>
             wait.pValues = &value;
             if (ext.waitSemaphores(device.context.Device(), &wait, ~0ULL) != vk::Result::Success)
             {
-                result = Err(ErrorCode::DeviceLost, "vulkan backend: wait after immediate submit failed");
+                result = Err(ErrorCode::DeviceLost,
+                             "vulkan backend: wait after immediate submit failed");
             }
         }
     }
@@ -976,7 +984,8 @@ template <typename Record>
 // Returns an error for a stale handle or a bad range; nothing is recorded then.
 struct BarrierBatch
 {
-    explicit BarrierBatch(memory::Allocator& allocator) noexcept : buffers(allocator), images(allocator)
+    explicit BarrierBatch(memory::Allocator& allocator) noexcept
+        : buffers(allocator), images(allocator)
     {
     }
     DynamicArray<vk::BufferMemoryBarrier2> buffers;
@@ -1072,7 +1081,8 @@ Status<Error> ListBegin(void* internal) noexcept
     CommandListData& list = List(internal);
     if (list.state == CommandListState::Recording)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: the command list is already recording");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: the command list is already recording");
     }
     vk::CommandBufferBeginInfo begin{};
     if (list.device->context.DeviceFunctionsExt().beginCommandBuffer(list.commands, &begin) !=
@@ -1109,7 +1119,8 @@ void ListReset(void* internal) noexcept
 {
     CommandListData& list = List(internal);
     VulkanRhiDevice& device = *list.device;
-    (void)device.context.DeviceFunctionsExt().resetCommandPool(device.context.Device(), list.pool, 0);
+    (void)device.context.DeviceFunctionsExt().resetCommandPool(device.context.Device(), list.pool,
+                                                               0);
     {
         const std::lock_guard<std::mutex> lock(device.mutex);
         ReleaseTransientViews(list);
@@ -1280,7 +1291,8 @@ Status<Error> ListSetPipeline(void* internal, PipelineHandle handle) noexcept
     const PipelineSlot* pipeline = device.pipelineTable.Resolve(handle);
     if (pipeline == nullptr)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: pipeline handle is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: pipeline handle is stale or invalid");
     }
     const PipelineLayoutSlot* layout = device.pipelineLayouts.Resolve(pipeline->layout);
     device.context.DeviceFunctionsExt().cmdBindPipeline(
@@ -1378,8 +1390,9 @@ Status<Error> ListSetViewport(void* internal, const Viewport& viewport) noexcept
     }
     // A negative height starts the viewport at its bottom edge and flips it, so the
     // same clip-space coordinates land where Direct3D puts them.
-    const vk::Viewport native{viewport.x,         viewport.y + viewport.height, viewport.width,
-                              -viewport.height,   viewport.minDepth,            viewport.maxDepth};
+    const vk::Viewport native{viewport.x,        viewport.y + viewport.height,
+                              viewport.width,    -viewport.height,
+                              viewport.minDepth, viewport.maxDepth};
     list.device->context.DeviceFunctionsExt().cmdSetViewport(list.commands, 0, 1, &native);
     return Status<Error>::Ok();
 }
@@ -1404,9 +1417,9 @@ Status<Error> ListDraw(void* internal, const DrawArguments& arguments) noexcept
     {
         return NotRecording();
     }
-    list.device->context.DeviceFunctionsExt().cmdDraw(list.commands, arguments.vertexCount,
-                                                      arguments.instanceCount, arguments.firstVertex,
-                                                      arguments.firstInstance);
+    list.device->context.DeviceFunctionsExt().cmdDraw(
+        list.commands, arguments.vertexCount, arguments.instanceCount, arguments.firstVertex,
+        arguments.firstInstance);
     ++list.stats.draws;
     return Status<Error>::Ok();
 }
@@ -1444,7 +1457,8 @@ Status<Error> ListDrawIndirect(void* internal, BufferHandle arguments, u64 offse
     const vk::Buffer buffer = NativeBuffer(device, arguments);
     if (buffer == 0)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: indirect buffer is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: indirect buffer is stale or invalid");
     }
     device.context.DeviceFunctionsExt().cmdDrawIndirect(list.commands, buffer, offsetBytes,
                                                         drawCount, strideBytes);
@@ -1465,7 +1479,8 @@ Status<Error> ListDrawIndexedIndirect(void* internal, BufferHandle arguments, u6
     const vk::Buffer buffer = NativeBuffer(device, arguments);
     if (buffer == 0)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: indirect buffer is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: indirect buffer is stale or invalid");
     }
     device.context.DeviceFunctionsExt().cmdDrawIndexedIndirect(list.commands, buffer, offsetBytes,
                                                                drawCount, strideBytes);
@@ -1473,7 +1488,8 @@ Status<Error> ListDrawIndexedIndirect(void* internal, BufferHandle arguments, u6
     return Status<Error>::Ok();
 }
 
-Status<Error> ListDrawIndirectCount(void* internal, const IndirectCountArguments& arguments) noexcept
+Status<Error> ListDrawIndirectCount(void* internal,
+                                    const IndirectCountArguments& arguments) noexcept
 {
     CommandListData& list = List(internal);
     if (list.state != CommandListState::Recording)
@@ -1491,7 +1507,8 @@ Status<Error> ListDrawIndirectCount(void* internal, const IndirectCountArguments
     const vk::Buffer count = NativeBuffer(device, arguments.countBuffer);
     if (args == 0 || count == 0)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: indirect buffer is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: indirect buffer is stale or invalid");
     }
     device.context.DeviceFunctionsExt().cmdDrawIndirectCount(
         list.commands, args, arguments.argumentOffsetBytes, count, arguments.countOffsetBytes,
@@ -1519,7 +1536,8 @@ Status<Error> ListDrawIndexedIndirectCount(void* internal,
     const vk::Buffer count = NativeBuffer(device, arguments.countBuffer);
     if (args == 0 || count == 0)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: indirect buffer is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: indirect buffer is stale or invalid");
     }
     device.context.DeviceFunctionsExt().cmdDrawIndexedIndirectCount(
         list.commands, args, arguments.argumentOffsetBytes, count, arguments.countOffsetBytes,
@@ -1553,7 +1571,8 @@ Status<Error> ListDispatchIndirect(void* internal, BufferHandle arguments, u64 o
     const vk::Buffer buffer = NativeBuffer(device, arguments);
     if (buffer == 0)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: indirect buffer is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: indirect buffer is stale or invalid");
     }
     device.context.DeviceFunctionsExt().cmdDispatchIndirect(list.commands, buffer, offsetBytes);
     ++list.stats.dispatches;
@@ -1576,7 +1595,8 @@ Status<Error> ListCopyBuffer(void* internal, const BufferCopy& copy) noexcept
         return Err(ErrorCode::InvalidArgument, "vulkan backend: a copy buffer is stale or invalid");
     }
     const vk::BufferCopy region{copy.sourceOffset, copy.destinationOffset, copy.sizeBytes};
-    device.context.DeviceFunctionsExt().cmdCopyBuffer(list.commands, source, destination, 1, &region);
+    device.context.DeviceFunctionsExt().cmdCopyBuffer(list.commands, source, destination, 1,
+                                                      &region);
     ++list.stats.copies;
     return Status<Error>::Ok();
 }
@@ -1595,8 +1615,9 @@ Status<Error> ListCopyBuffer(void* internal, const BufferCopy& copy) noexcept
     if (buffer == nullptr || texture == nullptr || copy.mipLevel >= texture->desc.mipLevels ||
         copy.arrayLayer >= texture->desc.arrayLayers)
     {
-        return Err(ErrorCode::InvalidArgument,
-                   "vulkan backend: a copy buffer or texture is stale, or its subresource is invalid");
+        return Err(
+            ErrorCode::InvalidArgument,
+            "vulkan backend: a copy buffer or texture is stale, or its subresource is invalid");
     }
     const FormatInfo format = FormatInfoOf(texture->desc.format);
     vk::BufferImageCopy region{};
@@ -1610,12 +1631,12 @@ Status<Error> ListCopyBuffer(void* internal, const BufferCopy& copy) noexcept
     {
         region.bufferImageHeight = copy.bufferDepthPitch / copy.bufferRowPitch * format.blockHeight;
     }
-    region.imageSubresource = vk::ImageSubresourceLayers{FormatAspects(texture->desc.format) &
-                                                             (format.depth ? vk::ImageAspect::kDepth
-                                                                           : vk::ImageAspect::kColor),
-                                                         copy.mipLevel, copy.arrayLayer, 1};
-    region.imageOffset = vk::Offset3D{static_cast<i32>(copy.x), static_cast<i32>(copy.y),
-                                      static_cast<i32>(copy.z)};
+    region.imageSubresource = vk::ImageSubresourceLayers{
+        FormatAspects(texture->desc.format) &
+            (format.depth ? vk::ImageAspect::kDepth : vk::ImageAspect::kColor),
+        copy.mipLevel, copy.arrayLayer, 1};
+    region.imageOffset =
+        vk::Offset3D{static_cast<i32>(copy.x), static_cast<i32>(copy.y), static_cast<i32>(copy.z)};
     region.imageExtent = vk::Extent3D{copy.width, copy.height, copy.depth};
     const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
     if (toTexture)
@@ -1654,7 +1675,8 @@ Status<Error> ListCopyTexture(void* internal, const TextureCopy& copy) noexcept
     const std::lock_guard<std::mutex> lock(device.mutex);
     const TextureSlot* source = device.textures.Resolve(copy.source);
     const TextureSlot* destination = device.textures.Resolve(copy.destination);
-    if (source == nullptr || destination == nullptr || copy.sourceMipLevel >= source->desc.mipLevels ||
+    if (source == nullptr || destination == nullptr ||
+        copy.sourceMipLevel >= source->desc.mipLevels ||
         copy.destinationMipLevel >= destination->desc.mipLevels ||
         copy.sourceArrayLayer >= source->desc.arrayLayers ||
         copy.destinationArrayLayer >= destination->desc.arrayLayers)
@@ -1663,11 +1685,11 @@ Status<Error> ListCopyTexture(void* internal, const TextureCopy& copy) noexcept
                    "vulkan backend: a copy texture is stale, or its subresource is invalid");
     }
     vk::ImageCopy region{};
-    region.srcSubresource = vk::ImageSubresourceLayers{FormatAspects(source->desc.format),
-                                                       copy.sourceMipLevel, copy.sourceArrayLayer, 1};
-    region.dstSubresource = vk::ImageSubresourceLayers{
-        FormatAspects(destination->desc.format), copy.destinationMipLevel,
-        copy.destinationArrayLayer, 1};
+    region.srcSubresource = vk::ImageSubresourceLayers{
+        FormatAspects(source->desc.format), copy.sourceMipLevel, copy.sourceArrayLayer, 1};
+    region.dstSubresource =
+        vk::ImageSubresourceLayers{FormatAspects(destination->desc.format),
+                                   copy.destinationMipLevel, copy.destinationArrayLayer, 1};
     region.extent = vk::Extent3D{copy.width, copy.height, copy.depth};
     device.context.DeviceFunctionsExt().cmdCopyImage(
         list.commands, source->image.image, vk::ImageLayout::TransferSrcOptimal,
@@ -1731,9 +1753,9 @@ Status<Error> ListCopyTexture(void* internal, const TextureCopy& copy) noexcept
             attachment.storeOp = vk::kAttachmentStoreOpStore;
             attachment.clearValue = clear;
             vk::RenderingInfo rendering{};
-            rendering.renderArea = vk::Rect2D{{0, 0},
-                                              {MipExtent(texture->desc.width, mip),
-                                               MipExtent(texture->desc.height, mip)}};
+            rendering.renderArea = vk::Rect2D{
+                {0, 0},
+                {MipExtent(texture->desc.width, mip), MipExtent(texture->desc.height, mip)}};
             if (depth)
             {
                 rendering.pDepthAttachment = &attachment;
@@ -2041,8 +2063,7 @@ Status<Error> VkSubmit(void* internal, const SubmitDesc& desc) noexcept
     DynamicArray<vk::SemaphoreSubmitInfo> waits(*device.allocator);
     DynamicArray<vk::SemaphoreSubmitInfo> signals(*device.allocator);
     if (!commands.TryReserve(desc.commandLists.Size()) ||
-        !waits.TryReserve(desc.gpuWaits.Size() + 1) ||
-        !signals.TryReserve(desc.signals.Size() + 1))
+        !waits.TryReserve(desc.gpuWaits.Size() + 1) || !signals.TryReserve(desc.signals.Size() + 1))
     {
         return Err(ErrorCode::Internal, "vulkan backend: submit scratch failed to allocate");
     }
@@ -2068,7 +2089,8 @@ Status<Error> VkSubmit(void* internal, const SubmitDesc& desc) noexcept
         const FenceSlot* fence = device.fences.Resolve(desc.gpuWaits[index].fence);
         if (fence == nullptr)
         {
-            return Err(ErrorCode::InvalidArgument, "vulkan backend: a wait fence is stale or invalid");
+            return Err(ErrorCode::InvalidArgument,
+                       "vulkan backend: a wait fence is stale or invalid");
         }
         vk::SemaphoreSubmitInfo wait{};
         wait.semaphore = fence->semaphore;
@@ -2219,13 +2241,13 @@ SubmissionInfo VkSubmissionInfo(const void* internal, QueueKind kind) noexcept
     }
     for (u32 index = 0; index < data.imageCount; ++index)
     {
-        (void)barriers.TryPushBack(MakeImageBarrier(
-            data.swapchain.Image(index), vk::ImageSubresourceRange{vk::ImageAspect::kColor, 0, 1, 0, 1},
-            ResourceState::Undefined, ResourceState::Present));
+        (void)barriers.TryPushBack(
+            MakeImageBarrier(data.swapchain.Image(index),
+                             vk::ImageSubresourceRange{vk::ImageAspect::kColor, 0, 1, 0, 1},
+                             ResourceState::Undefined, ResourceState::Present));
     }
     return RunImmediate(device,
-                        [&](vk::CommandBuffer commands) noexcept
-                        {
+                        [&](vk::CommandBuffer commands) noexcept {
                             RecordBarriers(ext, commands, nullptr, 0, barriers.Data(),
                                            static_cast<u32>(barriers.Size()));
                         });
@@ -2257,7 +2279,8 @@ void UnregisterSwapchainImages(VulkanRhiDevice& device, SwapChainData& data) noe
 
 // An empty submit that waits on `waitSemaphore` (binary) and signals a timeline value,
 // used to gate the graphics queue on an acquired image.
-[[nodiscard]] Status<Error> SubmitGate(VulkanRhiDevice& device, vk::Semaphore imageAvailable) noexcept
+[[nodiscard]] Status<Error> SubmitGate(VulkanRhiDevice& device,
+                                       vk::Semaphore imageAvailable) noexcept
 {
     vk::SemaphoreSubmitInfo wait{};
     wait.semaphore = imageAvailable;
@@ -2311,7 +2334,8 @@ Status<Error> ChainAcquire(void* internal, SwapChainFrame* out) noexcept
         }
         // Out of date: rebuild at the surface's current size and try once more.
         UnregisterSwapchainImages(device, data);
-        Status<Error> rebuilt = data.swapchain.Recreate(data.swapchain.Width(), data.swapchain.Height());
+        Status<Error> rebuilt =
+            data.swapchain.Recreate(data.swapchain.Width(), data.swapchain.Height());
         if (!rebuilt)
         {
             return rebuilt;
@@ -2463,8 +2487,9 @@ Status<Error> VkCreateSwapChain(void* internal, const SwapChainDesc& desc, SwapC
         device.allocator->Deallocate(data);
         return error;
     };
-    auto created = VulkanSwapchain::Create(device.context, const_cast<void*>(desc.surface.nativeWindow),
-                                           desc.surface.width, desc.surface.height);
+    auto created =
+        VulkanSwapchain::Create(device.context, const_cast<void*>(desc.surface.nativeWindow),
+                                desc.surface.width, desc.surface.height);
     if (!created)
     {
         return fail(Status<Error>::Err(created.Error()));
@@ -2497,7 +2522,8 @@ Status<Error> VkDestroySwapChain(void* internal, SwapChainHandle handle) noexcep
     SwapChainSlot* slot = device.swapChains.Resolve(handle);
     if (slot == nullptr)
     {
-        return Err(ErrorCode::InvalidArgument, "vulkan backend: swapchain handle is stale or invalid");
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: swapchain handle is stale or invalid");
     }
     SwapChainData* data = slot->data;
     UnregisterSwapchainImages(device, *data);
@@ -2577,7 +2603,8 @@ Status<Error> InitializeGpuObjects(VulkanRhiDevice& device) noexcept
         device.transitionPool = 0;
         return Err(ErrorCode::Internal, "vulkan backend: transition pool creation failed");
     }
-    const Status<Error> empty = device.pipelines.CreateSetLayout(nullptr, 0, &device.emptySetLayout);
+    const Status<Error> empty =
+        device.pipelines.CreateSetLayout(nullptr, 0, &device.emptySetLayout);
     if (!empty)
     {
         return empty;

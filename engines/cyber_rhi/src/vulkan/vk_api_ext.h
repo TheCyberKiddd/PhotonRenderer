@@ -924,9 +924,9 @@ struct SwapchainCreateInfoKHR
     SharingMode imageSharingMode = SharingMode::Exclusive;
     u32 queueFamilyIndexCount = 0;
     const u32* pQueueFamilyIndices = nullptr;
-    Flags preTransform = 1;  // identity
+    Flags preTransform = 1;    // identity
     Flags compositeAlpha = 1;  // opaque
-    u32 presentMode = 2;  // FIFO
+    u32 presentMode = 2;       // FIFO
     Bool32 clipped = kTrue;
     SwapchainKHR oldSwapchain = 0;
 };
@@ -1037,8 +1037,8 @@ CYBER_VK_PFN(CmdEndDebugUtilsLabelEXT, void, CommandBuffer);
 CYBER_VK_PFN(CmdInsertDebugUtilsLabelEXT, void, CommandBuffer, const DebugLabel*);
 
 // Instance-level presentation entry points.
-CYBER_VK_PFN(CreateWin32SurfaceKHR, Result, Instance, const Win32SurfaceCreateInfoKHR*,
-             const void*, SurfaceKHR*);
+CYBER_VK_PFN(CreateWin32SurfaceKHR, Result, Instance, const Win32SurfaceCreateInfoKHR*, const void*,
+             SurfaceKHR*);
 CYBER_VK_PFN(DestroySurfaceKHR, void, Instance, SurfaceKHR, const void*);
 CYBER_VK_PFN(GetPhysicalDeviceSurfaceSupportKHR, Result, PhysicalDevice, u32, SurfaceKHR, Bool32*);
 CYBER_VK_PFN(GetPhysicalDeviceSurfaceCapabilitiesKHR, Result, PhysicalDevice, SurfaceKHR,
@@ -1060,90 +1060,89 @@ CYBER_VK_PFN(QueuePresentKHR, Result, Queue, const PresentInfoKHR*);
 // Every device entry point of this slice: member, command name, type. The context
 // resolves them all through `vkGetDeviceProcAddr` with one macro, so a command
 // cannot be declared and forgotten.
-#define CYBER_VK_DEVICE_FUNCTIONS_EXT(X)                                                          \
-    X(createImage, "vkCreateImage", PFN_CreateImage)                                              \
-    X(destroyImage, "vkDestroyImage", PFN_DestroyImage)                                           \
-    X(getImageMemoryRequirements, "vkGetImageMemoryRequirements", PFN_GetImageMemoryRequirements) \
-    X(bindImageMemory, "vkBindImageMemory", PFN_BindImageMemory)                                  \
-    X(createImageView, "vkCreateImageView", PFN_CreateImageView)                                  \
-    X(destroyImageView, "vkDestroyImageView", PFN_DestroyImageView)                               \
-    X(createSampler, "vkCreateSampler", PFN_CreateSampler)                                        \
-    X(destroySampler, "vkDestroySampler", PFN_DestroySampler)                                     \
-    X(createCommandPool, "vkCreateCommandPool", PFN_CreateCommandPool)                            \
-    X(destroyCommandPool, "vkDestroyCommandPool", PFN_DestroyCommandPool)                         \
-    X(resetCommandPool, "vkResetCommandPool", PFN_ResetCommandPool)                               \
-    X(allocateCommandBuffers, "vkAllocateCommandBuffers", PFN_AllocateCommandBuffers)             \
-    X(freeCommandBuffers, "vkFreeCommandBuffers", PFN_FreeCommandBuffers)                         \
-    X(beginCommandBuffer, "vkBeginCommandBuffer", PFN_BeginCommandBuffer)                         \
-    X(endCommandBuffer, "vkEndCommandBuffer", PFN_EndCommandBuffer)                               \
-    X(resetCommandBuffer, "vkResetCommandBuffer", PFN_ResetCommandBuffer)                         \
-    X(cmdCopyBuffer, "vkCmdCopyBuffer", PFN_CmdCopyBuffer)                                        \
-    X(cmdCopyBufferToImage, "vkCmdCopyBufferToImage", PFN_CmdCopyBufferToImage)                   \
-    X(cmdCopyImageToBuffer, "vkCmdCopyImageToBuffer", PFN_CmdCopyImageToBuffer)                   \
-    X(cmdFillBuffer, "vkCmdFillBuffer", PFN_CmdFillBuffer)                                        \
-    X(cmdPipelineBarrier2, "vkCmdPipelineBarrier2", PFN_CmdPipelineBarrier2)                      \
-    X(cmdBindPipeline, "vkCmdBindPipeline", PFN_CmdBindPipeline)                                  \
-    X(cmdBindDescriptorSets, "vkCmdBindDescriptorSets", PFN_CmdBindDescriptorSets)                \
-    X(cmdPushConstants, "vkCmdPushConstants", PFN_CmdPushConstants)                               \
-    X(cmdDispatch, "vkCmdDispatch", PFN_CmdDispatch)                                              \
-    X(cmdDraw, "vkCmdDraw", PFN_CmdDraw)                                                          \
-    X(cmdBeginRendering, "vkCmdBeginRendering", PFN_CmdBeginRendering)                            \
-    X(cmdEndRendering, "vkCmdEndRendering", PFN_CmdEndRendering)                                  \
-    X(cmdSetViewport, "vkCmdSetViewport", PFN_CmdSetViewport)                                     \
-    X(cmdSetScissor, "vkCmdSetScissor", PFN_CmdSetScissor)                                        \
-    X(queueSubmit2, "vkQueueSubmit2", PFN_QueueSubmit2)                                           \
-    X(createSemaphore, "vkCreateSemaphore", PFN_CreateSemaphore)                                  \
-    X(destroySemaphore, "vkDestroySemaphore", PFN_DestroySemaphore)                               \
-    X(waitSemaphores, "vkWaitSemaphores", PFN_WaitSemaphores)                                     \
-    X(getSemaphoreCounterValue, "vkGetSemaphoreCounterValue", PFN_GetSemaphoreCounterValue)       \
-    X(signalSemaphore, "vkSignalSemaphore", PFN_SignalSemaphore)                                  \
-    X(createDescriptorSetLayout, "vkCreateDescriptorSetLayout", PFN_CreateDescriptorSetLayout)    \
-    X(destroyDescriptorSetLayout, "vkDestroyDescriptorSetLayout",                                 \
-      PFN_DestroyDescriptorSetLayout)                                                             \
-    X(createDescriptorPool, "vkCreateDescriptorPool", PFN_CreateDescriptorPool)                   \
-    X(destroyDescriptorPool, "vkDestroyDescriptorPool", PFN_DestroyDescriptorPool)                \
-    X(allocateDescriptorSets, "vkAllocateDescriptorSets", PFN_AllocateDescriptorSets)             \
-    X(updateDescriptorSets, "vkUpdateDescriptorSets", PFN_UpdateDescriptorSets)                   \
-    X(createPipelineLayout, "vkCreatePipelineLayout", PFN_CreatePipelineLayout)                   \
-    X(destroyPipelineLayout, "vkDestroyPipelineLayout", PFN_DestroyPipelineLayout)                \
-    X(createShaderModule, "vkCreateShaderModule", PFN_CreateShaderModule)                         \
-    X(destroyShaderModule, "vkDestroyShaderModule", PFN_DestroyShaderModule)                      \
-    X(createComputePipelines, "vkCreateComputePipelines", PFN_CreateComputePipelines)             \
-    X(createGraphicsPipelines, "vkCreateGraphicsPipelines", PFN_CreateGraphicsPipelines)          \
-    X(destroyPipeline, "vkDestroyPipeline", PFN_DestroyPipeline)                                  \
-    X(cmdBindVertexBuffers, "vkCmdBindVertexBuffers", PFN_CmdBindVertexBuffers)                   \
-    X(cmdBindIndexBuffer, "vkCmdBindIndexBuffer", PFN_CmdBindIndexBuffer)                         \
-    X(cmdDrawIndexed, "vkCmdDrawIndexed", PFN_CmdDrawIndexed)                                     \
-    X(cmdDrawIndirect, "vkCmdDrawIndirect", PFN_CmdDrawIndirect)                                  \
-    X(cmdDrawIndexedIndirect, "vkCmdDrawIndexedIndirect", PFN_CmdDrawIndexedIndirect)             \
-    X(cmdDrawIndirectCount, "vkCmdDrawIndirectCount", PFN_CmdDrawIndirectCount)                   \
-    X(cmdDrawIndexedIndirectCount, "vkCmdDrawIndexedIndirectCount",                               \
-      PFN_CmdDrawIndexedIndirectCount)                                                            \
-    X(cmdDispatchIndirect, "vkCmdDispatchIndirect", PFN_CmdDispatchIndirect)                      \
-    X(cmdCopyImage, "vkCmdCopyImage", PFN_CmdCopyImage)                                           \
-    X(cmdClearColorImage, "vkCmdClearColorImage", PFN_CmdClearColorImage)                         \
-    X(cmdClearDepthStencilImage, "vkCmdClearDepthStencilImage", PFN_CmdClearDepthStencilImage)    \
+#define CYBER_VK_DEVICE_FUNCTIONS_EXT(X)                                                           \
+    X(createImage, "vkCreateImage", PFN_CreateImage)                                               \
+    X(destroyImage, "vkDestroyImage", PFN_DestroyImage)                                            \
+    X(getImageMemoryRequirements, "vkGetImageMemoryRequirements", PFN_GetImageMemoryRequirements)  \
+    X(bindImageMemory, "vkBindImageMemory", PFN_BindImageMemory)                                   \
+    X(createImageView, "vkCreateImageView", PFN_CreateImageView)                                   \
+    X(destroyImageView, "vkDestroyImageView", PFN_DestroyImageView)                                \
+    X(createSampler, "vkCreateSampler", PFN_CreateSampler)                                         \
+    X(destroySampler, "vkDestroySampler", PFN_DestroySampler)                                      \
+    X(createCommandPool, "vkCreateCommandPool", PFN_CreateCommandPool)                             \
+    X(destroyCommandPool, "vkDestroyCommandPool", PFN_DestroyCommandPool)                          \
+    X(resetCommandPool, "vkResetCommandPool", PFN_ResetCommandPool)                                \
+    X(allocateCommandBuffers, "vkAllocateCommandBuffers", PFN_AllocateCommandBuffers)              \
+    X(freeCommandBuffers, "vkFreeCommandBuffers", PFN_FreeCommandBuffers)                          \
+    X(beginCommandBuffer, "vkBeginCommandBuffer", PFN_BeginCommandBuffer)                          \
+    X(endCommandBuffer, "vkEndCommandBuffer", PFN_EndCommandBuffer)                                \
+    X(resetCommandBuffer, "vkResetCommandBuffer", PFN_ResetCommandBuffer)                          \
+    X(cmdCopyBuffer, "vkCmdCopyBuffer", PFN_CmdCopyBuffer)                                         \
+    X(cmdCopyBufferToImage, "vkCmdCopyBufferToImage", PFN_CmdCopyBufferToImage)                    \
+    X(cmdCopyImageToBuffer, "vkCmdCopyImageToBuffer", PFN_CmdCopyImageToBuffer)                    \
+    X(cmdFillBuffer, "vkCmdFillBuffer", PFN_CmdFillBuffer)                                         \
+    X(cmdPipelineBarrier2, "vkCmdPipelineBarrier2", PFN_CmdPipelineBarrier2)                       \
+    X(cmdBindPipeline, "vkCmdBindPipeline", PFN_CmdBindPipeline)                                   \
+    X(cmdBindDescriptorSets, "vkCmdBindDescriptorSets", PFN_CmdBindDescriptorSets)                 \
+    X(cmdPushConstants, "vkCmdPushConstants", PFN_CmdPushConstants)                                \
+    X(cmdDispatch, "vkCmdDispatch", PFN_CmdDispatch)                                               \
+    X(cmdDraw, "vkCmdDraw", PFN_CmdDraw)                                                           \
+    X(cmdBeginRendering, "vkCmdBeginRendering", PFN_CmdBeginRendering)                             \
+    X(cmdEndRendering, "vkCmdEndRendering", PFN_CmdEndRendering)                                   \
+    X(cmdSetViewport, "vkCmdSetViewport", PFN_CmdSetViewport)                                      \
+    X(cmdSetScissor, "vkCmdSetScissor", PFN_CmdSetScissor)                                         \
+    X(queueSubmit2, "vkQueueSubmit2", PFN_QueueSubmit2)                                            \
+    X(createSemaphore, "vkCreateSemaphore", PFN_CreateSemaphore)                                   \
+    X(destroySemaphore, "vkDestroySemaphore", PFN_DestroySemaphore)                                \
+    X(waitSemaphores, "vkWaitSemaphores", PFN_WaitSemaphores)                                      \
+    X(getSemaphoreCounterValue, "vkGetSemaphoreCounterValue", PFN_GetSemaphoreCounterValue)        \
+    X(signalSemaphore, "vkSignalSemaphore", PFN_SignalSemaphore)                                   \
+    X(createDescriptorSetLayout, "vkCreateDescriptorSetLayout", PFN_CreateDescriptorSetLayout)     \
+    X(destroyDescriptorSetLayout, "vkDestroyDescriptorSetLayout", PFN_DestroyDescriptorSetLayout)  \
+    X(createDescriptorPool, "vkCreateDescriptorPool", PFN_CreateDescriptorPool)                    \
+    X(destroyDescriptorPool, "vkDestroyDescriptorPool", PFN_DestroyDescriptorPool)                 \
+    X(allocateDescriptorSets, "vkAllocateDescriptorSets", PFN_AllocateDescriptorSets)              \
+    X(updateDescriptorSets, "vkUpdateDescriptorSets", PFN_UpdateDescriptorSets)                    \
+    X(createPipelineLayout, "vkCreatePipelineLayout", PFN_CreatePipelineLayout)                    \
+    X(destroyPipelineLayout, "vkDestroyPipelineLayout", PFN_DestroyPipelineLayout)                 \
+    X(createShaderModule, "vkCreateShaderModule", PFN_CreateShaderModule)                          \
+    X(destroyShaderModule, "vkDestroyShaderModule", PFN_DestroyShaderModule)                       \
+    X(createComputePipelines, "vkCreateComputePipelines", PFN_CreateComputePipelines)              \
+    X(createGraphicsPipelines, "vkCreateGraphicsPipelines", PFN_CreateGraphicsPipelines)           \
+    X(destroyPipeline, "vkDestroyPipeline", PFN_DestroyPipeline)                                   \
+    X(cmdBindVertexBuffers, "vkCmdBindVertexBuffers", PFN_CmdBindVertexBuffers)                    \
+    X(cmdBindIndexBuffer, "vkCmdBindIndexBuffer", PFN_CmdBindIndexBuffer)                          \
+    X(cmdDrawIndexed, "vkCmdDrawIndexed", PFN_CmdDrawIndexed)                                      \
+    X(cmdDrawIndirect, "vkCmdDrawIndirect", PFN_CmdDrawIndirect)                                   \
+    X(cmdDrawIndexedIndirect, "vkCmdDrawIndexedIndirect", PFN_CmdDrawIndexedIndirect)              \
+    X(cmdDrawIndirectCount, "vkCmdDrawIndirectCount", PFN_CmdDrawIndirectCount)                    \
+    X(cmdDrawIndexedIndirectCount, "vkCmdDrawIndexedIndirectCount",                                \
+      PFN_CmdDrawIndexedIndirectCount)                                                             \
+    X(cmdDispatchIndirect, "vkCmdDispatchIndirect", PFN_CmdDispatchIndirect)                       \
+    X(cmdCopyImage, "vkCmdCopyImage", PFN_CmdCopyImage)                                            \
+    X(cmdClearColorImage, "vkCmdClearColorImage", PFN_CmdClearColorImage)                          \
+    X(cmdClearDepthStencilImage, "vkCmdClearDepthStencilImage", PFN_CmdClearDepthStencilImage)     \
     X(freeDescriptorSets, "vkFreeDescriptorSets", PFN_FreeDescriptorSets)
 
 // Device entry points that exist only when VK_KHR_swapchain is enabled.
-#define CYBER_VK_SWAPCHAIN_FUNCTIONS(X)                                                           \
-    X(createSwapchain, "vkCreateSwapchainKHR", PFN_CreateSwapchainKHR)                            \
-    X(destroySwapchain, "vkDestroySwapchainKHR", PFN_DestroySwapchainKHR)                         \
-    X(getSwapchainImages, "vkGetSwapchainImagesKHR", PFN_GetSwapchainImagesKHR)                   \
-    X(acquireNextImage, "vkAcquireNextImageKHR", PFN_AcquireNextImageKHR)                         \
+#define CYBER_VK_SWAPCHAIN_FUNCTIONS(X)                                                            \
+    X(createSwapchain, "vkCreateSwapchainKHR", PFN_CreateSwapchainKHR)                             \
+    X(destroySwapchain, "vkDestroySwapchainKHR", PFN_DestroySwapchainKHR)                          \
+    X(getSwapchainImages, "vkGetSwapchainImagesKHR", PFN_GetSwapchainImagesKHR)                    \
+    X(acquireNextImage, "vkAcquireNextImageKHR", PFN_AcquireNextImageKHR)                          \
     X(queuePresent, "vkQueuePresentKHR", PFN_QueuePresentKHR)
 
 // Instance entry points that exist only when VK_KHR_surface is enabled.
-#define CYBER_VK_SURFACE_FUNCTIONS(X)                                                             \
-    X(createWin32Surface, "vkCreateWin32SurfaceKHR", PFN_CreateWin32SurfaceKHR)                   \
-    X(destroySurface, "vkDestroySurfaceKHR", PFN_DestroySurfaceKHR)                               \
-    X(getSurfaceSupport, "vkGetPhysicalDeviceSurfaceSupportKHR",                                  \
-      PFN_GetPhysicalDeviceSurfaceSupportKHR)                                                     \
-    X(getSurfaceCapabilities, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR",                        \
-      PFN_GetPhysicalDeviceSurfaceCapabilitiesKHR)                                                \
-    X(getSurfaceFormats, "vkGetPhysicalDeviceSurfaceFormatsKHR",                                  \
-      PFN_GetPhysicalDeviceSurfaceFormatsKHR)                                                     \
-    X(getSurfacePresentModes, "vkGetPhysicalDeviceSurfacePresentModesKHR",                        \
+#define CYBER_VK_SURFACE_FUNCTIONS(X)                                                              \
+    X(createWin32Surface, "vkCreateWin32SurfaceKHR", PFN_CreateWin32SurfaceKHR)                    \
+    X(destroySurface, "vkDestroySurfaceKHR", PFN_DestroySurfaceKHR)                                \
+    X(getSurfaceSupport, "vkGetPhysicalDeviceSurfaceSupportKHR",                                   \
+      PFN_GetPhysicalDeviceSurfaceSupportKHR)                                                      \
+    X(getSurfaceCapabilities, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR",                         \
+      PFN_GetPhysicalDeviceSurfaceCapabilitiesKHR)                                                 \
+    X(getSurfaceFormats, "vkGetPhysicalDeviceSurfaceFormatsKHR",                                   \
+      PFN_GetPhysicalDeviceSurfaceFormatsKHR)                                                      \
+    X(getSurfacePresentModes, "vkGetPhysicalDeviceSurfacePresentModesKHR",                         \
       PFN_GetPhysicalDeviceSurfacePresentModesKHR)
 
 #define CYBER_VK_DECLARE_MEMBER(member, name, type) type member = nullptr;

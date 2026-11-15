@@ -69,10 +69,11 @@ struct VulkanRig
 
 // Makes device writes visible to the host: the last barrier before reading a
 // readback buffer through its mapping.
-inline void HostReadBarrier(const detail::vk::DeviceApiExt& ext,
-                            detail::vk::CommandBuffer commands, detail::vk::Buffer buffer,
-                            detail::vk::Flags64 sourceStage = detail::vk::Stage2::kAllCommands,
-                            detail::vk::Flags64 sourceAccess = detail::vk::Access2::kMemoryWrite) noexcept
+inline void
+HostReadBarrier(const detail::vk::DeviceApiExt& ext, detail::vk::CommandBuffer commands,
+                detail::vk::Buffer buffer,
+                detail::vk::Flags64 sourceStage = detail::vk::Stage2::kAllCommands,
+                detail::vk::Flags64 sourceAccess = detail::vk::Access2::kMemoryWrite) noexcept
 {
     detail::vk::BufferMemoryBarrier2 barrier{};
     barrier.srcStageMask = sourceStage;
