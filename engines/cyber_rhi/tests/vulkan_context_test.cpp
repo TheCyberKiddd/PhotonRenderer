@@ -129,8 +129,10 @@ CG_TEST(vulkan_context_rejects_a_missing_adapter)
     desc.adapterIndex = 999;
     auto created = VulkanContext::Create(desc, allocator);
     CG_REQUIRE(!created);
-    // No runtime is `NotFound`; with one, an index past the list is `OutOfRange`.
+    // An unavailable runtime is `NotFound` or `Unsupported`; with one, an index
+    // past the list is `OutOfRange`.
     CG_EXPECT_TRUE(created.Error().code == ErrorCode::NotFound ||
+                   created.Error().code == ErrorCode::Unsupported ||
                    created.Error().code == ErrorCode::OutOfRange);
 }
 
