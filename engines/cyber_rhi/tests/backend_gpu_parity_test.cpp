@@ -1,10 +1,11 @@
 // The same RHI frame, recorded once and run on every compiled-in hardware backend:
 // bind groups, pipeline layouts, compute and graphics pipelines, command lists,
 // barriers, copies, submission, fences and swapchains. Phase 34's done line is "the
-// same renderer code on D3D12 and Vulkan"; this is that sentence as a test. Only the
-// shader bytes differ, because the project's compiler has no SPIR-V output yet: the
-// D3D12 backend compiles HLSL, the Vulkan one is given SPIR-V written with
-// `SpirvBuilder`. Everything else, and every assertion, is shared.
+// same renderer code on D3D12 and Vulkan"; this is that sentence as a test. Both
+// backends are given the same HLSL source: D3D12 compiles it with d3dcompiler, Vulkan
+// with the backend's own HLSL-to-SPIR-V compiler (hlsl_spirv.h). The hand-written
+// SPIR-V twins (`SpirvBuilder`) still run on Vulkan when CYBER_PARITY_SPIRV=1, which
+// keeps the precompiled-SPIR-V path covered. Every assertion is shared.
 
 #include "spirv_test_shaders.h"
 
@@ -13,6 +14,7 @@
 #include <cyber/memory/span.h>
 #include <cyber/platform/platform.h>
 #include <cyber/rhi/backend.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/d3d12.h>
 #include <cyber/rhi/device.h>
 #include <cyber/rhi/rhi.h>
@@ -20,6 +22,7 @@
 #include <cyber/test/test.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <utility>
 
@@ -102,7 +105,14 @@ struct Gpu
     return true;
 }
 
-// A shader for the backend under test: HLSL source for D3D12, SPIR-V for Vulkan.
+[[nodiscard]] bool UsePrecompiledSpirv() noexcept
+{
+    char value[8] = {};
+    return ReadEnvironmentVariable("CYBER_PARITY_SPIRV", value, sizeof(value)) && value[0] == '1';
+}
+
+// A shader for the backend under test: the same HLSL source for every backend, or
+// the SPIR-V twin on Vulkan when CYBER_PARITY_SPIRV=1.
 [[nodiscard]] ShaderHandle MakeShader(Gpu& gpu, ShaderStage stage, const char* hlsl,
                                       const DynamicArray<u32>& spirv, const char* label) noexcept
 {
@@ -110,7 +120,7 @@ struct Gpu
     desc.stage = stage;
     desc.entryPoint = "main";
     desc.label = label;
-    if (gpu.kind == BackendKind::Vulkan)
+    if (gpu.kind == BackendKind::Vulkan && UsePrecompiledSpirv())
     {
         desc.format = ShaderBytecodeFormat::SpirV;
         desc.code = Span<const Byte>(reinterpret_cast<const Byte*>(spirv.Data()), spirv.Size() * 4);
@@ -652,5 +662,81 @@ CG_TEST(gpu_parity_swapchain_presents_frames)
             CG_REQUIRE(swapchain.Value().Present().IsOk());
         }
         CG_EXPECT_TRUE(gpu.device.WaitIdle().IsOk());
+    }
+}
+
+// Pipeline caches: a pipeline built through a cache, the cache's bytes saved, and a
+// second cache seeded with them serving the same pipeline. The bytes are opaque
+// (a D3D12 pipeline library or a Vulkan pipeline cache), so only the round trip is
+// common: both backends accept their own saved bytes and build from them.
+CG_TEST(gpu_parity_pipeline_cache_round_trip)
+{
+    const Backend* backends[2] = {D3D12Backend(), VulkanBackend()};
+    for (u32 index = 0; index < 2; ++index)
+    {
+        Gpu gpu;
+        if (!Open(backends[index], gpu))
+        {
+            continue;
+        }
+        Device& device = gpu.device;
+        DynamicArray<u32> unused(gpu.heap);
+        const ShaderHandle shader =
+            MakeShader(gpu, ShaderStage::Compute, kComputeHlsl, unused, "cached scale-bias");
+        CG_REQUIRE(shader.IsValid());
+        const BindGroupLayoutEntry entries[2] = {
+            {0, BindingType::ReadOnlyStorageBuffer, ShaderStageBit(ShaderStage::Compute), 1,
+             kNoShaderRegister, false},
+            {1, BindingType::StorageBuffer, ShaderStageBit(ShaderStage::Compute), 1,
+             kNoShaderRegister, false},
+        };
+        BindGroupLayoutDesc layoutDesc{};
+        layoutDesc.entries = Span<const BindGroupLayoutEntry>(entries, 2);
+        auto groupLayout = device.CreateBindGroupLayout(layoutDesc);
+        CG_REQUIRE(static_cast<bool>(groupLayout));
+        PipelineLayoutDesc pipelineLayoutDesc{};
+        pipelineLayoutDesc.groups[0] = groupLayout.Value();
+        const PushConstantRange range{0, 12, ShaderStageBit(ShaderStage::Compute)};
+        pipelineLayoutDesc.pushConstants = Span<const PushConstantRange>(&range, 1);
+        auto pipelineLayout = device.CreatePipelineLayout(pipelineLayoutDesc);
+        CG_REQUIRE(static_cast<bool>(pipelineLayout));
+
+        PipelineCacheDesc cacheDesc{};
+        cacheDesc.label = "parity cache";
+        auto cache = device.CreatePipelineCache(cacheDesc);
+        if (!cache && cache.Error().code == cyber::core::ErrorCode::Unsupported)
+        {
+            std::printf("  %s: pipeline caches unsupported\n", device.BackendName());
+            continue;
+        }
+        CG_REQUIRE(static_cast<bool>(cache));
+        ComputePipelineDesc pipelineDesc{};
+        pipelineDesc.layout = pipelineLayout.Value();
+        pipelineDesc.computeShader = shader;
+        pipelineDesc.cache = cache.Value();
+        auto first = device.CreateComputePipeline(pipelineDesc);
+        CG_REQUIRE(static_cast<bool>(first));
+        auto bytes = device.PipelineCacheBytes(cache.Value(), gpu.heap);
+        CG_REQUIRE(static_cast<bool>(bytes));
+        std::printf("  %s: %zu cache bytes\n", device.BackendName(),
+                    static_cast<size_t>(bytes.Value().Size()));
+
+        PipelineCacheDesc seededDesc{};
+        seededDesc.initialData = Span<const Byte>(bytes.Value().Data(), bytes.Value().Size());
+        seededDesc.label = "seeded parity cache";
+        auto seeded = device.CreatePipelineCache(seededDesc);
+        CG_REQUIRE(static_cast<bool>(seeded));
+        pipelineDesc.cache = seeded.Value();
+        auto second = device.CreateComputePipeline(pipelineDesc);
+        CG_REQUIRE(static_cast<bool>(second));
+
+        CG_EXPECT_TRUE(device.DestroyComputePipeline(second.Value()).IsOk());
+        CG_EXPECT_TRUE(device.DestroyComputePipeline(first.Value()).IsOk());
+        CG_EXPECT_TRUE(device.DestroyPipelineCache(seeded.Value()).IsOk());
+        CG_EXPECT_TRUE(device.DestroyPipelineCache(cache.Value()).IsOk());
+        CG_EXPECT_TRUE(device.DestroyPipelineLayout(pipelineLayout.Value()).IsOk());
+        CG_EXPECT_TRUE(device.DestroyBindGroupLayout(groupLayout.Value()).IsOk());
+        CG_EXPECT_TRUE(device.DestroyShader(shader).IsOk());
+        CG_EXPECT_EQ(device.ReportLeaks(), u32{0});
     }
 }

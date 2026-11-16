@@ -945,8 +945,137 @@ inline constexpr const char* kSurfaceExtensionName = "VK_KHR_surface";
 inline constexpr const char* kWin32SurfaceExtensionName = "VK_KHR_win32_surface";
 inline constexpr const char* kSwapchainExtensionName = "VK_KHR_swapchain";
 
+// ---- Queries, pipeline caches and sparse binding ------------------------------
+
+using QueryPool = u64;
+inline constexpr u32 kQueryTypeTimestamp = 2;
+inline constexpr Flags kQueryResult64 = 0x1;
+inline constexpr Flags kQueryResultWait = 0x2;
+
+struct QueryPoolCreateInfo
+{
+    StructureType sType = static_cast<StructureType>(11);
+    const void* pNext = nullptr;
+    Flags flags = 0;
+    u32 queryType = kQueryTypeTimestamp;
+    u32 queryCount = 0;
+    Flags pipelineStatistics = 0;
+};
+
+struct PipelineCacheCreateInfo
+{
+    StructureType sType = static_cast<StructureType>(17);
+    const void* pNext = nullptr;
+    Flags flags = 0;
+    usize initialDataSize = 0;
+    const void* pInitialData = nullptr;
+};
+
+// VkImageCreateFlagBits for reserved images.
+inline constexpr Flags kImageCreateSparseBinding = 0x1;
+inline constexpr Flags kImageCreateSparseResidency = 0x2;
+// VkSparseImageFormatFlagBits.
+inline constexpr Flags kSparseImageFormatSingleMipTail = 0x1;
+
+struct SparseImageFormatProperties
+{
+    Flags aspectMask = 0;
+    Extent3D imageGranularity{};
+    Flags flags = 0;
+};
+
+struct SparseImageMemoryRequirements
+{
+    SparseImageFormatProperties formatProperties{};
+    u32 imageMipTailFirstLod = 0;
+    DeviceSize imageMipTailSize = 0;
+    DeviceSize imageMipTailOffset = 0;
+    DeviceSize imageMipTailStride = 0;
+};
+
+struct ImageSubresource
+{
+    Flags aspectMask = 0;
+    u32 mipLevel = 0;
+    u32 arrayLayer = 0;
+};
+
+struct SparseMemoryBind
+{
+    DeviceSize resourceOffset = 0;
+    DeviceSize size = 0;
+    DeviceMemory memory = 0;
+    DeviceSize memoryOffset = 0;
+    Flags flags = 0;
+};
+
+struct SparseImageMemoryBind
+{
+    ImageSubresource subresource{};
+    Offset3D offset{};
+    Extent3D extent{};
+    DeviceMemory memory = 0;
+    DeviceSize memoryOffset = 0;
+    Flags flags = 0;
+};
+
+struct SparseImageOpaqueMemoryBindInfo
+{
+    Image image = 0;
+    u32 bindCount = 0;
+    const SparseMemoryBind* pBinds = nullptr;
+};
+
+struct SparseImageMemoryBindInfo
+{
+    Image image = 0;
+    u32 bindCount = 0;
+    const SparseImageMemoryBind* pBinds = nullptr;
+};
+
+struct TimelineSemaphoreSubmitInfo
+{
+    StructureType sType = static_cast<StructureType>(1000207003);
+    const void* pNext = nullptr;
+    u32 waitSemaphoreValueCount = 0;
+    const u64* pWaitSemaphoreValues = nullptr;
+    u32 signalSemaphoreValueCount = 0;
+    const u64* pSignalSemaphoreValues = nullptr;
+};
+
+struct BindSparseInfo
+{
+    StructureType sType = static_cast<StructureType>(7);
+    const void* pNext = nullptr;
+    u32 waitSemaphoreCount = 0;
+    const Semaphore* pWaitSemaphores = nullptr;
+    u32 bufferBindCount = 0;
+    const void* pBufferBinds = nullptr;
+    u32 imageOpaqueBindCount = 0;
+    const SparseImageOpaqueMemoryBindInfo* pImageOpaqueBinds = nullptr;
+    u32 imageBindCount = 0;
+    const SparseImageMemoryBindInfo* pImageBinds = nullptr;
+    u32 signalSemaphoreCount = 0;
+    const Semaphore* pSignalSemaphores = nullptr;
+};
+
 // Function pointer types.
 #define CYBER_VK_PFN(name, ret, ...) using PFN_##name = ret(CYBER_VKAPI*)(__VA_ARGS__)
+
+CYBER_VK_PFN(CreateQueryPool, Result, Device, const QueryPoolCreateInfo*, const void*, QueryPool*);
+CYBER_VK_PFN(DestroyQueryPool, void, Device, QueryPool, const void*);
+CYBER_VK_PFN(ResetQueryPool, void, Device, QueryPool, u32, u32);
+CYBER_VK_PFN(CmdResetQueryPool, void, CommandBuffer, QueryPool, u32, u32);
+CYBER_VK_PFN(CmdWriteTimestamp2, void, CommandBuffer, Flags64, QueryPool, u32);
+CYBER_VK_PFN(CmdCopyQueryPoolResults, void, CommandBuffer, QueryPool, u32, u32, Buffer, DeviceSize,
+             DeviceSize, Flags);
+CYBER_VK_PFN(CreatePipelineCache, Result, Device, const PipelineCacheCreateInfo*, const void*,
+             PipelineCache*);
+CYBER_VK_PFN(DestroyPipelineCache, void, Device, PipelineCache, const void*);
+CYBER_VK_PFN(GetPipelineCacheData, Result, Device, PipelineCache, usize*, void*);
+CYBER_VK_PFN(GetImageSparseMemoryRequirements, void, Device, Image, u32*,
+             SparseImageMemoryRequirements*);
+CYBER_VK_PFN(QueueBindSparse, Result, Queue, u32, const BindSparseInfo*, u64);
 
 CYBER_VK_PFN(CreateImage, Result, Device, const ImageCreateInfo*, const void*, Image*);
 CYBER_VK_PFN(DestroyImage, void, Device, Image, const void*);
@@ -1122,7 +1251,19 @@ CYBER_VK_PFN(QueuePresentKHR, Result, Queue, const PresentInfoKHR*);
     X(cmdCopyImage, "vkCmdCopyImage", PFN_CmdCopyImage)                                            \
     X(cmdClearColorImage, "vkCmdClearColorImage", PFN_CmdClearColorImage)                          \
     X(cmdClearDepthStencilImage, "vkCmdClearDepthStencilImage", PFN_CmdClearDepthStencilImage)     \
-    X(freeDescriptorSets, "vkFreeDescriptorSets", PFN_FreeDescriptorSets)
+    X(freeDescriptorSets, "vkFreeDescriptorSets", PFN_FreeDescriptorSets)                          \
+    X(createQueryPool, "vkCreateQueryPool", PFN_CreateQueryPool)                                   \
+    X(destroyQueryPool, "vkDestroyQueryPool", PFN_DestroyQueryPool)                                \
+    X(resetQueryPool, "vkResetQueryPool", PFN_ResetQueryPool)                                      \
+    X(cmdResetQueryPool, "vkCmdResetQueryPool", PFN_CmdResetQueryPool)                             \
+    X(cmdWriteTimestamp2, "vkCmdWriteTimestamp2", PFN_CmdWriteTimestamp2)                          \
+    X(cmdCopyQueryPoolResults, "vkCmdCopyQueryPoolResults", PFN_CmdCopyQueryPoolResults)           \
+    X(createPipelineCache, "vkCreatePipelineCache", PFN_CreatePipelineCache)                       \
+    X(destroyPipelineCache, "vkDestroyPipelineCache", PFN_DestroyPipelineCache)                    \
+    X(getPipelineCacheData, "vkGetPipelineCacheData", PFN_GetPipelineCacheData)                    \
+    X(getImageSparseMemoryRequirements, "vkGetImageSparseMemoryRequirements",                      \
+      PFN_GetImageSparseMemoryRequirements)                                                        \
+    X(queueBindSparse, "vkQueueBindSparse", PFN_QueueBindSparse)
 
 // Device entry points that exist only when VK_KHR_swapchain is enabled.
 #define CYBER_VK_SWAPCHAIN_FUNCTIONS(X)                                                            \

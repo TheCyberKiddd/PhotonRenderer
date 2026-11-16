@@ -16,6 +16,8 @@
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/memory/span.h>
 #include <cyber/platform/filesystem.h>
+#include <cyber/rhi/backend_select.h>
+#include <cyber/rhi/capabilities.h>
 #include <cyber/rhi/command_list.h>
 #include <cyber/rhi/d3d12.h>
 #include <cyber/rhi/device.h>
@@ -422,7 +424,8 @@ constexpr char kTrianglePixelSource[] = "float4 main(float4 position : SV_Positi
 
 [[nodiscard]] bool OpenD3D12Device(Device& out, HeapAllocator& heap) noexcept
 {
-    const Backend* backend = D3D12Backend();
+    // D3D12, or the backend CYBER_RHI_BACKEND names (the `_vulkan` registration).
+    const Backend* backend = SelectBackend(0, nullptr, D3D12Backend());
     if (backend == nullptr)
     {
         return false;
@@ -1291,6 +1294,16 @@ void WriteImage(const char* name, const u8* pixels) noexcept
     }
 }
 
+// "<base>-<backend>", for the GPU image of the backend under test.
+[[nodiscard]] const char* CandidateName(const char* base) noexcept
+{
+    static char name[96];
+    const Backend* backend = SelectBackend(0, nullptr, D3D12Backend());
+    std::snprintf(name, sizeof(name), "%s-%s", base,
+                  backend != nullptr ? BackendKindName(backend->kind) : "none");
+    return name;
+}
+
 void ExpectWithin(const char* name, const u8* reference, const u8* candidate) noexcept
 {
     const Difference difference = Compare(reference, candidate);
@@ -1320,7 +1333,7 @@ CG_TEST(backend_compare_triangle)
     CG_REQUIRE(RenderD3DTriangle(heap, rendered));
     ResolveBox(rendered, candidate);
     WriteImage("phase-14-triangle-software", reference);
-    WriteImage("phase-14-triangle-d3d12", candidate);
+    WriteImage(CandidateName("phase-14-triangle"), candidate);
     ExpectWithin("triangle", reference, candidate);
 }
 
@@ -1345,6 +1358,6 @@ CG_TEST(backend_compare_textured_cube)
     }
     ResolveBox(rendered, candidate);
     WriteImage("phase-14-cube-software", reference);
-    WriteImage("phase-14-cube-d3d12", candidate);
+    WriteImage(CandidateName("phase-14-cube"), candidate);
     ExpectWithin("textured cube", reference, candidate);
 }

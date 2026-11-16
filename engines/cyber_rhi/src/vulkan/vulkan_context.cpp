@@ -198,6 +198,8 @@ template <typename Function>
         Resolve(global, instance, "vkGetPhysicalDeviceQueueFamilyProperties",
                 api.getPhysicalDeviceQueueFamilyProperties) &&
         Resolve(global, instance, "vkGetPhysicalDeviceFeatures2", api.getPhysicalDeviceFeatures2) &&
+        Resolve(global, instance, "vkGetPhysicalDeviceProperties2",
+                api.getPhysicalDeviceProperties2) &&
         Resolve(global, instance, "vkEnumerateDeviceExtensionProperties",
                 api.enumerateDeviceExtensionProperties) &&
         Resolve(global, instance, "vkCreateDevice", api.createDevice) &&
@@ -777,11 +779,13 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     // resources need descriptor indexing, frame pacing needs timeline
     // semaphores, and barriers are written against synchronization2. A device
     // missing one is refused by name rather than failing later and obscurely.
+    vk::PhysicalDeviceVulkan11Features supported11{};
     vk::PhysicalDeviceVulkan12Features supported12{};
     vk::PhysicalDeviceVulkan13Features supported13{};
+    supported11.pNext = &supported12;
     supported12.pNext = &supported13;
     vk::PhysicalDeviceFeatures2 supported{};
-    supported.pNext = &supported12;
+    supported.pNext = &supported11;
     api.getPhysicalDeviceFeatures2(physical, &supported);
 
     struct Required
@@ -801,6 +805,9 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
          "descriptorBindingSampledImageUpdateAfterBind"},
         {false, vk::Feature12::kShaderSampledImageArrayNonUniformIndexing,
          "shaderSampledImageArrayNonUniformIndexing"},
+        // The HLSL compiler lays structured buffers out tightly, with offsets that
+        // only scalar block layout allows (a float3 at any 4-byte offset).
+        {false, vk::Feature12::kScalarBlockLayout, "scalarBlockLayout"},
         {true, vk::Feature13::kSynchronization2, "synchronization2"},
         {true, vk::Feature13::kDynamicRendering, "dynamicRendering"},
     };
@@ -831,6 +838,28 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     {
         enabled12.flags[vk::Feature12::kDrawIndirectCount] = vk::kTrue;
     }
+    // The rest of the optional set: whatever the device has, so renderer code that
+    // runs on D3D12 finds the same rules here (first-instance indirect draws for
+    // GPU culling, and so on). Scalar block layout is required above.
+    constexpr u32 kOptional12[] = {
+        vk::Feature12::kShaderUniformBufferArrayNonUniformIndexing,
+        vk::Feature12::kShaderStorageBufferArrayNonUniformIndexing,
+        vk::Feature12::kShaderStorageImageArrayNonUniformIndexing,
+        vk::Feature12::kDescriptorBindingUniformBufferUpdateAfterBind,
+        vk::Feature12::kDescriptorBindingStorageImageUpdateAfterBind,
+        vk::Feature12::kDescriptorBindingStorageBufferUpdateAfterBind,
+        vk::Feature12::kDescriptorBindingUpdateUnusedWhilePending,
+        vk::Feature12::kUniformBufferStandardLayout,
+        vk::Feature12::kHostQueryReset,
+    };
+    for (const u32 index : kOptional12)
+    {
+        enabled12.flags[index] = supported12.flags[index];
+    }
+    vk::PhysicalDeviceVulkan11Features enabled11{};
+    enabled11.pNext = &enabled12;
+    enabled11.flags[vk::Feature11::kShaderDrawParameters] =
+        supported11.flags[vk::Feature11::kShaderDrawParameters];
 
     // One queue per distinct family.
     const float priority = 1.0F;
@@ -881,14 +910,45 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
     }
 
     vk::PhysicalDeviceFeatures2 enabled{};
-    enabled.pNext = &enabled12;
-    // Core 1.0 features the RHI exposes. Indices follow `VkPhysicalDeviceFeatures`:
-    // multiDrawIndirect 9, samplerAnisotropy 19, textureCompressionBC 22.
-    constexpr u32 kFeatureMultiDrawIndirect = 9;
-    constexpr u32 kFeatureSamplerAnisotropy = 19;
-    constexpr u32 kFeatureTextureCompressionBc = 22;
-    for (const u32 index :
-         {kFeatureMultiDrawIndirect, kFeatureSamplerAnisotropy, kFeatureTextureCompressionBc})
+    enabled.pNext = &enabled11;
+    // Core 1.0 features the RHI uses, enabled when present.
+    constexpr u32 kFeatureMultiDrawIndirect = vk::Feature10::kMultiDrawIndirect;
+    constexpr u32 kFeatureSamplerAnisotropy = vk::Feature10::kSamplerAnisotropy;
+    constexpr u32 kFeatureTextureCompressionBc = vk::Feature10::kTextureCompressionBc;
+    // Robust access first: D3D12 defines out-of-range buffer and texture accesses
+    // (reads return zero, writes are dropped), and renderer shaders written against
+    // it rely on that. Vulkan leaves them undefined -- a device lost on Intel --
+    // unless robustBufferAccess and robustImageAccess are on.
+    enabled13.flags[vk::Feature13::kRobustImageAccess] =
+        supported13.flags[vk::Feature13::kRobustImageAccess];
+    constexpr u32 kOptional10[] = {
+        vk::Feature10::kRobustBufferAccess,
+        vk::Feature10::kImageCubeArray,
+        vk::Feature10::kIndependentBlend,
+        vk::Feature10::kMultiDrawIndirect,
+        vk::Feature10::kDrawIndirectFirstInstance,
+        vk::Feature10::kDepthClamp,
+        vk::Feature10::kDepthBiasClamp,
+        vk::Feature10::kFillModeNonSolid,
+        vk::Feature10::kSamplerAnisotropy,
+        vk::Feature10::kTextureCompressionBc,
+        vk::Feature10::kVertexPipelineStoresAndAtomics,
+        vk::Feature10::kFragmentStoresAndAtomics,
+        vk::Feature10::kShaderImageGatherExtended,
+        vk::Feature10::kShaderStorageImageExtendedFormats,
+        vk::Feature10::kShaderStorageImageReadWithoutFormat,
+        vk::Feature10::kShaderStorageImageWriteWithoutFormat,
+        vk::Feature10::kShaderUniformBufferArrayDynamicIndexing,
+        vk::Feature10::kShaderSampledImageArrayDynamicIndexing,
+        vk::Feature10::kShaderStorageBufferArrayDynamicIndexing,
+        vk::Feature10::kShaderStorageImageArrayDynamicIndexing,
+        vk::Feature10::kShaderResourceResidency,
+        vk::Feature10::kShaderResourceMinLod,
+        vk::Feature10::kSparseBinding,
+        vk::Feature10::kSparseResidencyImage2D,
+        vk::Feature10::kSparseResidencyAliased,
+    };
+    for (const u32 index : kOptional10)
     {
         enabled.features.flags[index] = supported.features.flags[index];
     }
@@ -1016,6 +1076,91 @@ Result<VulkanContext, Error> VulkanContext::Create(const VulkanContextDesc& desc
         info.maxPushConstantBytes = head[8];
     }
     info.drawIndirectCount = drawIndirectCount;
+    const auto has10 = [&](u32 index) noexcept
+    { return supported.features.flags[index] != vk::kFalse; };
+    info.drawIndirectFirstInstance = has10(vk::Feature10::kDrawIndirectFirstInstance);
+    info.depthClamp = has10(vk::Feature10::kDepthClamp);
+    info.fillModeNonSolid = has10(vk::Feature10::kFillModeNonSolid);
+    info.storageImageReadWithoutFormat = has10(vk::Feature10::kShaderStorageImageReadWithoutFormat);
+    info.storageImageWriteWithoutFormat =
+        has10(vk::Feature10::kShaderStorageImageWriteWithoutFormat);
+    info.shaderStorageImageExtendedFormats =
+        has10(vk::Feature10::kShaderStorageImageExtendedFormats);
+    info.sparseBinding = has10(vk::Feature10::kSparseBinding);
+    info.sparseResidencyImage2D = has10(vk::Feature10::kSparseResidencyImage2D);
+    info.sparseResidencyAliased = has10(vk::Feature10::kSparseResidencyAliased);
+    const u32 kindFamilies[3] = {queues.graphics, queues.compute, queues.transfer};
+    for (u32 kind = 0; kind < 3; ++kind)
+    {
+        info.sparseQueue[kind] =
+            (families[kindFamilies[kind]].queueFlags & vk::QueueFlag::kSparseBinding) != 0;
+    }
+    info.shaderResourceResidency = has10(vk::Feature10::kShaderResourceResidency);
+    info.shaderDrawParameters =
+        supported11.flags[vk::Feature11::kShaderDrawParameters] != vk::kFalse;
+    info.scalarBlockLayout = supported12.flags[vk::Feature12::kScalarBlockLayout] != vk::kFalse;
+    info.hostQueryReset = supported12.flags[vk::Feature12::kHostQueryReset] != vk::kFalse;
+    {
+        const unsigned char* limits =
+            reinterpret_cast<const unsigned char*>(properties.limitsAndSparseProperties);
+        u32 computeAndGraphics = 0;
+        std::memcpy(&computeAndGraphics, limits + vk::kLimitTimestampComputeAndGraphics, 4);
+        std::memcpy(&info.timestampPeriodNs, limits + vk::kLimitTimestampPeriod, 4);
+        u32 standard2D = 0;
+        u32 nonResidentStrict = 0;
+        std::memcpy(&standard2D, limits + vk::kSparseResidencyStandard2DBlockShape, 4);
+        std::memcpy(&nonResidentStrict, limits + vk::kSparseResidencyNonResidentStrict, 4);
+        info.timestampComputeAndGraphics = computeAndGraphics != 0;
+        info.sparseStandard2DBlockShape = standard2D != 0;
+        info.sparseNonResidentStrict = nonResidentStrict != 0;
+        info.timestampValidBits = families[queues.graphics].timestampValidBits;
+        // The rest of the limits the RHI reports, at their `VkPhysicalDeviceLimits`
+        // offsets (64-bit layout; see vk_api.h).
+        const auto readU32 = [&](u32 offset) noexcept
+        {
+            u32 value = 0;
+            std::memcpy(&value, limits + offset, 4);
+            return value;
+        };
+        const auto readU64 = [&](u32 offset) noexcept
+        {
+            u64 value = 0;
+            std::memcpy(&value, limits + offset, 8);
+            return value;
+        };
+        info.maxStorageBufferRange = readU32(28);
+        info.maxPerStageSamplers = readU32(68);
+        info.maxPerStageUniformBuffers = readU32(72);
+        info.maxPerStageStorageBuffers = readU32(76);
+        info.maxPerStageSampledImages = readU32(80);
+        info.maxPerStageStorageImages = readU32(84);
+        info.maxVertexInputAttributes = readU32(128);
+        info.maxVertexInputBindings = readU32(132);
+        std::memcpy(&info.maxSamplerAnisotropy, limits + 272, 4);
+        info.minUniformBufferOffsetAlignment = static_cast<u32>(readU64(320));
+        info.minStorageBufferOffsetAlignment = static_cast<u32>(readU64(328));
+        info.maxColorAttachments = readU32(392);
+    }
+    {
+        vk::PhysicalDeviceDescriptorIndexingProperties indexing{};
+        vk::PhysicalDeviceProperties2 properties2{};
+        properties2.pNext = &indexing;
+        api.getPhysicalDeviceProperties2(physical, &properties2);
+        info.uabPerStageSamplers = indexing.values[vk::kUabPerStageSamplers];
+        info.uabPerStageUniformBuffers = indexing.values[vk::kUabPerStageUniformBuffers];
+        info.uabPerStageStorageBuffers = indexing.values[vk::kUabPerStageStorageBuffers];
+        info.uabPerStageSampledImages = indexing.values[vk::kUabPerStageSampledImages];
+        info.uabPerStageStorageImages = indexing.values[vk::kUabPerStageStorageImages];
+        info.uabStorageBuffer =
+            supported12.flags[vk::Feature12::kDescriptorBindingStorageBufferUpdateAfterBind] !=
+            vk::kFalse;
+        info.uabStorageImage =
+            supported12.flags[vk::Feature12::kDescriptorBindingStorageImageUpdateAfterBind] !=
+            vk::kFalse;
+        info.uabUniformBuffer =
+            supported12.flags[vk::Feature12::kDescriptorBindingUniformBufferUpdateAfterBind] !=
+            vk::kFalse;
+    }
 
     // Name the queues so a capture and a validation message say which is which.
     (void)context.SetObjectName(vk::ObjectType::Queue,

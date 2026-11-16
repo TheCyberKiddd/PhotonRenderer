@@ -236,6 +236,88 @@ Status<Error> VkCreateBindGroupLayout(void* internal, const BindGroupLayoutDesc&
         descriptorCount += entry.arrayCount;
         dynamicCount += entry.dynamicOffset ? 1U : 0U;
     }
+    // Binding arrays are bindless tables: update-after-bind and partially bound, so
+    // they reach the descriptor-indexing limits (thousands) rather than the
+    // ordinary per-stage ones (200 on the HD 530), as D3D12 descriptor tables do.
+    // Vulkan allows no dynamic buffers in such a layout, so one with them keeps
+    // ordinary bindings.
+    const VulkanDeviceInfo& features = device.context.Info();
+    const auto uabCapable = [&](BindingType type) noexcept
+    {
+        switch (type)
+        {
+        case BindingType::SampledTexture:
+        case BindingType::Sampler:
+            return true;  // required at device creation
+        case BindingType::StorageBuffer:
+        case BindingType::ReadOnlyStorageBuffer:
+            return features.uabStorageBuffer;
+        case BindingType::StorageTexture:
+            return features.uabStorageImage;
+        case BindingType::UniformBuffer:
+            return features.uabUniformBuffer;
+        default:
+            return false;
+        }
+    };
+    bool updateAfterBind = false;
+    if (dynamicCount == 0)
+    {
+        for (usize index = 0; index < desc.entries.Size(); ++index)
+        {
+            const BindGroupLayoutEntry& entry = desc.entries[index];
+            if (entry.arrayCount > 1 && uabCapable(entry.type))
+            {
+                bindings[index].bindingFlags = vk::DescriptorBindingFlag::kUpdateAfterBind |
+                                               vk::DescriptorBindingFlag::kPartiallyBound;
+                updateAfterBind = true;
+            }
+        }
+    }
+
+    // An array must fit the limit of the binding kind it ends up as: the
+    // update-after-bind limit for bindless bindings, the ordinary per-stage limit for
+    // the rest (a type without update-after-bind support, or any binding in a layout
+    // with dynamic offsets).
+    for (usize index = 0; index < desc.entries.Size(); ++index)
+    {
+        const BindGroupLayoutEntry& entry = desc.entries[index];
+        if (entry.arrayCount <= 1)
+        {
+            continue;
+        }
+        const bool bindless = bindings[index].bindingFlags != 0;
+        u32 limit = 0;
+        switch (entry.type)
+        {
+        case BindingType::UniformBuffer:
+            limit =
+                bindless ? features.uabPerStageUniformBuffers : features.maxPerStageUniformBuffers;
+            break;
+        case BindingType::StorageBuffer:
+        case BindingType::ReadOnlyStorageBuffer:
+            limit =
+                bindless ? features.uabPerStageStorageBuffers : features.maxPerStageStorageBuffers;
+            break;
+        case BindingType::SampledTexture:
+            limit =
+                bindless ? features.uabPerStageSampledImages : features.maxPerStageSampledImages;
+            break;
+        case BindingType::StorageTexture:
+            limit =
+                bindless ? features.uabPerStageStorageImages : features.maxPerStageStorageImages;
+            break;
+        default:
+            limit = bindless ? features.uabPerStageSamplers : features.maxPerStageSamplers;
+            break;
+        }
+        if (entry.arrayCount > limit)
+        {
+            return Err(ErrorCode::InvalidArgument,
+                       "vulkan backend: a binding array is larger than the device's descriptor "
+                       "limit for its type");
+        }
+    }
 
     const std::lock_guard<std::mutex> lock(device.mutex);
     u32 slotIndex = 0;
@@ -244,6 +326,7 @@ Status<Error> VkCreateBindGroupLayout(void* internal, const BindGroupLayoutDesc&
         return Err(ErrorCode::Internal, "vulkan backend: layout table could not grow");
     }
     LayoutSlot& slot = device.layouts.At(slotIndex);
+    slot.updateAfterBind = updateAfterBind;
     const Status<Error> created = device.pipelines.CreateSetLayout(
         bindings, static_cast<u32>(desc.entries.Size()), &slot.layout);
     if (!created)
@@ -282,25 +365,63 @@ Status<Error> VkDestroyBindGroupLayout(void* internal, BindGroupLayoutHandle han
 constexpr u32 kPoolMaxSets = 1024;
 constexpr u32 kPoolDescriptorsPerType = 4096;
 
-[[nodiscard]] Status<Error> AddDescriptorPool(VulkanRhiDevice& device) noexcept
+// Opens a pool. Update-after-bind pools hold no dynamic buffers (Vulkan forbids
+// them in such layouts). Every descriptor type gets at least a default share; a
+// type the layout needs more of (one large bindless set) gets that layout's own
+// count for the type, not the layout's total, so unrelated types are not inflated.
+[[nodiscard]] Status<Error> AddDescriptorPool(VulkanRhiDevice& device, bool updateAfterBind,
+                                              const LayoutSlot& layout) noexcept
 {
-    const vk::DescriptorPoolSize sizes[7] = {
-        {vk::DescriptorType::UniformBuffer, kPoolDescriptorsPerType},
-        {kUniformBufferDynamic, kPoolDescriptorsPerType},
-        {vk::DescriptorType::StorageBuffer, kPoolDescriptorsPerType},
-        {kStorageBufferDynamic, kPoolDescriptorsPerType},
-        {vk::DescriptorType::SampledImage, kPoolDescriptorsPerType},
-        {vk::DescriptorType::StorageImage, kPoolDescriptorsPerType},
-        {vk::DescriptorType::Sampler, kPoolDescriptorsPerType},
-    };
+    const vk::DescriptorType kTypes[7] = {vk::DescriptorType::UniformBuffer,
+                                          vk::DescriptorType::StorageBuffer,
+                                          vk::DescriptorType::SampledImage,
+                                          vk::DescriptorType::StorageImage,
+                                          vk::DescriptorType::Sampler,
+                                          kUniformBufferDynamic,
+                                          kStorageBufferDynamic};
+    u32 needed[7] = {};
+    for (u32 index = 0; index < layout.entryCount; ++index)
+    {
+        const BindGroupLayoutEntry& entry = layout.entries[index];
+        const vk::DescriptorType type = ToDescriptorType(entry.type, entry.dynamicOffset);
+        for (u32 slot = 0; slot < 7; ++slot)
+        {
+            if (kTypes[slot] == type)
+            {
+                needed[slot] += entry.arrayCount;
+            }
+        }
+    }
+    vk::DescriptorPoolSize sizes[7] = {};
+    u32 sizeCount = 0;
+    for (u32 slot = 0; slot < 7; ++slot)
+    {
+        const bool dynamic = slot >= 5;
+        if (dynamic && updateAfterBind)
+        {
+            continue;
+        }
+        // A bindless pool is sized for the layout that asked for it: types that
+        // layout does not use get no capacity. A layout with other types that
+        // finds the pool unfit opens its own pool (see the allocation retry).
+        if (updateAfterBind && needed[slot] == 0)
+        {
+            continue;
+        }
+        const u32 count =
+            needed[slot] > kPoolDescriptorsPerType ? needed[slot] : kPoolDescriptorsPerType;
+        sizes[sizeCount++] = {kTypes[slot], count};
+    }
     vk::DescriptorPool pool = 0;
-    const Status<Error> created =
-        device.pipelines.CreateDescriptorPool(kPoolMaxSets, sizes, 7, false, &pool);
+    const Status<Error> created = device.pipelines.CreateDescriptorPool(
+        kPoolMaxSets, sizes, sizeCount, updateAfterBind, &pool);
     if (!created)
     {
         return created;
     }
-    if (!device.descriptorPools.TryPushBack(pool))
+    DynamicArray<vk::DescriptorPool>& pools =
+        updateAfterBind ? device.uabDescriptorPools : device.descriptorPools;
+    if (!pools.TryPushBack(pool))
     {
         device.pipelines.DestroyDescriptorPool(pool);
         return Err(ErrorCode::Internal, "vulkan backend: descriptor pool list could not grow");
@@ -435,26 +556,30 @@ Status<Error> VkCreateBindGroup(void* internal, const BindGroupDesc& desc,
     info.descriptorSetCount = 1;
     info.pSetLayouts = &layout->layout;
     vk::Result result = vk::Result::ErrorOutOfHostMemory;
+    const bool uab = layout->updateAfterBind;
+    DynamicArray<vk::DescriptorPool>& pools =
+        uab ? device.uabDescriptorPools : device.descriptorPools;
+    slot.updateAfterBindPool = uab;
     for (u32 attempt = 0; attempt < 2; ++attempt)
     {
-        if (device.descriptorPools.Empty())
+        if (pools.Empty())
         {
-            const Status<Error> added = AddDescriptorPool(device);
+            const Status<Error> added = AddDescriptorPool(device, uab, *layout);
             if (!added)
             {
                 device.groups.Release(slotIndex);
                 return added;
             }
         }
-        slot.pool = static_cast<u32>(device.descriptorPools.Size() - 1);
-        info.descriptorPool = device.descriptorPools.Back();
+        slot.pool = static_cast<u32>(pools.Size() - 1);
+        info.descriptorPool = pools.Back();
         result = ext.allocateDescriptorSets(device.context.Device(), &info, &slot.set);
         if (result == vk::Result::Success)
         {
             break;
         }
         // Out of pool memory or fragmented: a fresh pool is the answer once.
-        const Status<Error> added = AddDescriptorPool(device);
+        const Status<Error> added = AddDescriptorPool(device, uab, *layout);
         if (!added)
         {
             device.groups.Release(slotIndex);
@@ -469,8 +594,10 @@ Status<Error> VkCreateBindGroup(void* internal, const BindGroupDesc& desc,
     const Status<Error> written = WriteGroup(device, *layout, slot.set, desc.resources);
     if (!written)
     {
-        (void)ext.freeDescriptorSets(device.context.Device(), device.descriptorPools[slot.pool], 1,
-                                     &slot.set);
+        (void)ext.freeDescriptorSets(device.context.Device(),
+                                     (slot.updateAfterBindPool ? device.uabDescriptorPools
+                                                               : device.descriptorPools)[slot.pool],
+                                     1, &slot.set);
         device.groups.Release(slotIndex);
         return written;
     }
@@ -509,7 +636,10 @@ Status<Error> VkDestroyBindGroup(void* internal, BindGroupHandle handle) noexcep
         return Err(ErrorCode::InvalidArgument, "vulkan backend: bind group handle is stale");
     }
     (void)device.context.DeviceFunctionsExt().freeDescriptorSets(
-        device.context.Device(), device.descriptorPools[group->pool], 1, &group->set);
+        device.context.Device(),
+        (group->updateAfterBindPool ? device.uabDescriptorPools
+                                    : device.descriptorPools)[group->pool],
+        1, &group->set);
     device.groups.Release(handle.index);
     return Status<Error>::Ok();
 }
@@ -623,6 +753,181 @@ Status<Error> VkDestroyPipelineLayout(void* internal, PipelineLayoutHandle handl
     return factor == BlendFactor::SourceAlphaSaturate ? 14U : static_cast<u32>(factor);
 }
 
+// ---- HLSL shaders: per-pipeline compilation ---------------------------------
+
+// The register a layout entry occupies, assigned exactly as the D3D12 root
+// signature assigns it: an explicit `shaderRegister`, or the running count of
+// earlier entries in the same register class.
+[[nodiscard]] u32 RegisterForEntry(const LayoutSlot& layout, u32 entryIndex) noexcept
+{
+    const BindGroupLayoutEntry& entry = layout.entries[entryIndex];
+    if (entry.shaderRegister != kNoShaderRegister)
+    {
+        return entry.shaderRegister;
+    }
+    u32 next = 0;
+    for (u32 prior = 0; prior < entryIndex; ++prior)
+    {
+        if (SharesShaderRegisterClass(layout.entries[prior].type, entry.type))
+        {
+            next += layout.entries[prior].arrayCount;
+        }
+    }
+    return next;
+}
+
+[[nodiscard]] bool InRegisterClass(BindingType type, hlsl::RegisterClass registerClass) noexcept
+{
+    switch (registerClass)
+    {
+    case hlsl::RegisterClass::ConstantBuffer:
+        return type == BindingType::UniformBuffer;
+    case hlsl::RegisterClass::ShaderResource:
+        return type == BindingType::SampledTexture || type == BindingType::ReadOnlyStorageBuffer;
+    case hlsl::RegisterClass::UnorderedAccess:
+        return type == BindingType::StorageBuffer || type == BindingType::StorageTexture;
+    case hlsl::RegisterClass::Sampler:
+        return type == BindingType::Sampler;
+    }
+    return false;
+}
+
+// Resolves HLSL registers against one pipeline layout: register space N is bind
+// group slot N, and `b0, space0` is the push-constant block when the layout has
+// one, as on D3D12. Runs under the device mutex.
+class LayoutResolver final : public hlsl::BindingResolver
+{
+public:
+    LayoutResolver(const VulkanRhiDevice& device, const PipelineLayoutSlot& layout) noexcept
+        : m_device(device), m_layout(layout)
+    {
+    }
+
+    [[nodiscard]] bool Resolve(hlsl::RegisterClass registerClass, u32 registerIndex, u32 space,
+                               hlsl::ResolvedBinding* out) const noexcept override
+    {
+        if (registerClass == hlsl::RegisterClass::ConstantBuffer && registerIndex == 0 &&
+            space == 0 && m_layout.pushConstantBytes > 0)
+        {
+            out->kind = hlsl::BindingKind::PushConstant;
+            out->set = 0;
+            out->binding = 0;
+            out->arrayCount = 1;
+            out->firstElement = 0;
+            return true;
+        }
+        if (space >= kBindGroupSlotCount || !m_layout.groups[space].IsValid())
+        {
+            return false;
+        }
+        const LayoutSlot* group = m_device.layouts.Resolve(m_layout.groups[space]);
+        if (group == nullptr)
+        {
+            return false;
+        }
+        for (u32 index = 0; index < group->entryCount; ++index)
+        {
+            const BindGroupLayoutEntry& entry = group->entries[index];
+            if (!InRegisterClass(entry.type, registerClass))
+            {
+                continue;
+            }
+            const u32 base = RegisterForEntry(*group, index);
+            if (registerIndex < base || registerIndex - base >= entry.arrayCount)
+            {
+                continue;
+            }
+            switch (entry.type)
+            {
+            case BindingType::UniformBuffer:
+                out->kind = hlsl::BindingKind::UniformBuffer;
+                break;
+            case BindingType::StorageBuffer:
+            case BindingType::ReadOnlyStorageBuffer:
+                out->kind = hlsl::BindingKind::StorageBuffer;
+                break;
+            case BindingType::SampledTexture:
+                out->kind = hlsl::BindingKind::SampledImage;
+                break;
+            case BindingType::StorageTexture:
+                out->kind = hlsl::BindingKind::StorageImage;
+                break;
+            default:
+                out->kind = hlsl::BindingKind::Sampler;
+                break;
+            }
+            out->set = space;
+            out->binding = entry.binding;
+            out->arrayCount = entry.arrayCount;
+            out->firstElement = registerIndex - base;
+            return true;
+        }
+        return false;
+    }
+
+private:
+    const VulkanRhiDevice& m_device;
+    const PipelineLayoutSlot& m_layout;
+};
+
+// Modules compiled from HLSL for one pipeline; destroyed once it exists (or fails).
+struct TransientModules
+{
+    explicit TransientModules(VulkanRhiDevice& owner) noexcept : device(&owner) {}
+    TransientModules(const TransientModules&) = delete;
+    TransientModules& operator=(const TransientModules&) = delete;
+    ~TransientModules()
+    {
+        for (u32 index = 0; index < count; ++index)
+        {
+            device->pipelines.DestroyShader(modules[index]);
+        }
+    }
+    VulkanRhiDevice* device;
+    vk::ShaderModule modules[2] = {};
+    u32 count = 0;
+};
+
+// The module a pipeline stage uses: the shader's own for SPIR-V, or one compiled
+// now from its HLSL against `layout`.
+[[nodiscard]] Status<Error> ModuleFor(VulkanRhiDevice& device, const ShaderSlot& shader,
+                                      const PipelineLayoutSlot& layout, const hlsl::Varying* linked,
+                                      u32 linkedCount, hlsl::CompileOutput* output,
+                                      TransientModules& temps, vk::ShaderModule* module) noexcept
+{
+    if (shader.format != ShaderBytecodeFormat::HlslSource)
+    {
+        *module = shader.module;
+        return Status<Error>::Ok();
+    }
+    const LayoutResolver resolver(device, layout);
+    hlsl::CompileDesc compile{};
+    compile.source = shader.source;
+    compile.sourceBytes = shader.sourceBytes;
+    compile.entryPoint = shader.entry;
+    compile.stage = shader.stage;
+    compile.sourceName = shader.name[0] != '\0' ? shader.name : nullptr;
+    compile.resolver = &resolver;
+    compile.linkedInputs = linked;
+    compile.linkedInputCount = linkedCount;
+    compile.features = device.shaderFeatures;
+    const Status<Error> compiled = hlsl::Compile(compile, *device.allocator, output);
+    if (!compiled)
+    {
+        return Err(compiled.Error().code, KeepShaderDiagnostic(compiled.Error().message));
+    }
+    vk::ShaderModule created = 0;
+    const Status<Error> made =
+        device.pipelines.CreateShader(output->words.Data(), output->words.Size(), &created);
+    if (!made)
+    {
+        return made;
+    }
+    temps.modules[temps.count++] = created;
+    *module = created;
+    return Status<Error>::Ok();
+}
+
 Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDesc& desc,
                                        PipelineHandle* out) noexcept
 {
@@ -631,10 +936,17 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
         return Err(ErrorCode::InvalidArgument,
                    "vulkan backend: pipeline creation needs a device and an output handle");
     }
-    if (desc.rasterizer.polygonMode != PolygonMode::Fill || !desc.rasterizer.depthClipEnabled)
+    const VulkanDeviceInfo& features = Self(internal).context.Info();
+    if (desc.rasterizer.polygonMode != PolygonMode::Fill && !features.fillModeNonSolid)
     {
-        return Err(ErrorCode::Unsupported, "vulkan backend: wireframe and disabled depth clip need "
-                                           "device features that are not enabled");
+        return Err(ErrorCode::Unsupported,
+                   "vulkan backend: wireframe needs fillModeNonSolid, which this device lacks");
+    }
+    if (!desc.rasterizer.depthClipEnabled && !features.depthClamp)
+    {
+        return Err(
+            ErrorCode::Unsupported,
+            "vulkan backend: disabling depth clip needs depthClamp, which this device lacks");
     }
     if (desc.colorAttachments.Size() > kMaxColorAttachments ||
         desc.vertexLayout.bindings.Size() > kMaxVertexBindings)
@@ -661,16 +973,43 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
         }
     }
 
+    if (vertex->stage != ShaderStage::Vertex ||
+        (pixel != nullptr && pixel->stage != ShaderStage::Pixel))
+    {
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: a graphics pipeline needs a vertex and a pixel shader");
+    }
+    TransientModules temps(device);
+    hlsl::CompileOutput vertexOutput(*device.allocator);
+    vk::ShaderModule vertexModule = 0;
+    const Status<Error> vertexReady =
+        ModuleFor(device, *vertex, *layout, nullptr, 0, &vertexOutput, temps, &vertexModule);
+    if (!vertexReady)
+    {
+        return vertexReady;
+    }
     vk::PipelineShaderStageCreateInfo stages[2] = {};
     u32 stageCount = 0;
     stages[stageCount].stage = vk::ShaderStage::kVertex;
-    stages[stageCount].module = vertex->module;
+    stages[stageCount].module = vertexModule;
     stages[stageCount].pName = vertex->entry;
     ++stageCount;
+    hlsl::CompileOutput pixelOutput(*device.allocator);
     if (pixel != nullptr)
     {
+        // Pixel inputs link to the vertex outputs by semantic. A SPIR-V vertex
+        // shader carries no semantics, so its HLSL partner takes declaration order.
+        const bool linked = vertex->format == ShaderBytecodeFormat::HlslSource;
+        vk::ShaderModule pixelModule = 0;
+        const Status<Error> pixelReady =
+            ModuleFor(device, *pixel, *layout, linked ? vertexOutput.outputs : nullptr,
+                      linked ? vertexOutput.outputCount : 0, &pixelOutput, temps, &pixelModule);
+        if (!pixelReady)
+        {
+            return pixelReady;
+        }
         stages[stageCount].stage = vk::ShaderStage::kFragment;
-        stages[stageCount].module = pixel->module;
+        stages[stageCount].module = pixelModule;
         stages[stageCount].pName = pixel->entry;
         ++stageCount;
     }
@@ -710,6 +1049,10 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
     vk::PipelineViewportStateCreateInfo viewport{};
 
     vk::PipelineRasterizationStateCreateInfo raster{};
+    // D3D12's DepthClipEnable = false stops clipping against near and far; Vulkan's
+    // depth clamp disables that clipping and clamps depth to the viewport range.
+    raster.depthClampEnable = desc.rasterizer.depthClipEnabled ? vk::kFalse : vk::kTrue;
+    raster.polygonMode = desc.rasterizer.polygonMode == PolygonMode::Line ? 1U : 0U;
     raster.cullMode = static_cast<vk::Flags>(desc.rasterizer.cullMode);  // none, front, back
     raster.frontFace = desc.rasterizer.frontFace == FrontFace::Clockwise ? 1U : 0U;
     const bool bias =
@@ -815,7 +1158,8 @@ Status<Error> VkCreateGraphicsPipeline(void* internal, const GraphicsPipelineDes
     }
     PipelineSlot& slot = device.pipelineTable.At(slotIndex);
     if (device.context.DeviceFunctionsExt().createGraphicsPipelines(
-            device.context.Device(), 0, 1, &info, nullptr, &slot.pipeline) != vk::Result::Success)
+            device.context.Device(), NativePipelineCache(device, desc.cache), 1, &info, nullptr,
+            &slot.pipeline) != vk::Result::Success)
     {
         device.pipelineTable.Release(slotIndex);
         return Err(ErrorCode::Internal, "vulkan backend: vkCreateGraphicsPipelines failed");
@@ -849,9 +1193,23 @@ Status<Error> VkCreateComputePipeline(void* internal, const ComputePipelineDesc&
         return Err(ErrorCode::InvalidArgument,
                    "vulkan backend: pipeline needs a valid layout and compute shader");
     }
+    if (shader->stage != ShaderStage::Compute)
+    {
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: the compute shader is not a compute stage");
+    }
+    TransientModules temps(device);
+    hlsl::CompileOutput output(*device.allocator);
+    vk::ShaderModule module = 0;
+    const Status<Error> ready =
+        ModuleFor(device, *shader, *layout, nullptr, 0, &output, temps, &module);
+    if (!ready)
+    {
+        return ready;
+    }
     vk::ComputePipelineCreateInfo info{};
     info.stage.stage = vk::ShaderStage::kCompute;
-    info.stage.module = shader->module;
+    info.stage.module = module;
     info.stage.pName = shader->entry;
     info.layout = layout->layout;
 
@@ -862,7 +1220,8 @@ Status<Error> VkCreateComputePipeline(void* internal, const ComputePipelineDesc&
     }
     PipelineSlot& slot = device.pipelineTable.At(slotIndex);
     if (device.context.DeviceFunctionsExt().createComputePipelines(
-            device.context.Device(), 0, 1, &info, nullptr, &slot.pipeline) != vk::Result::Success)
+            device.context.Device(), NativePipelineCache(device, desc.cache), 1, &info, nullptr,
+            &slot.pipeline) != vk::Result::Success)
     {
         device.pipelineTable.Release(slotIndex);
         return Err(ErrorCode::Internal, "vulkan backend: vkCreateComputePipelines failed");
@@ -908,14 +1267,243 @@ PipelineInfo VkPipelineInfo(const void* internal, PipelineHandle handle) noexcep
     return info;
 }
 
+}  // namespace
+
+// ---- Resource zero-initialisation ---------------------------------------------
+
+namespace
+{
+
+// Opens the pending initialisation batch when it is not already recording.
+[[nodiscard]] bool EnsureInitCommands(VulkanRhiDevice& device) noexcept
+{
+    if (device.initCommands != nullptr)
+    {
+        return true;
+    }
+    const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
+    vk::CommandBufferAllocateInfo allocate{};
+    allocate.commandPool = device.transitionPool;
+    vk::CommandBuffer commands = nullptr;
+    if (device.transitionPool == 0 || ext.allocateCommandBuffers(device.context.Device(), &allocate,
+                                                                 &commands) != vk::Result::Success)
+    {
+        return false;
+    }
+    vk::CommandBufferBeginInfo begin{};
+    begin.flags = vk::kCommandBufferOneTimeSubmit;
+    if (ext.beginCommandBuffer(commands, &begin) != vk::Result::Success)
+    {
+        ext.freeCommandBuffers(device.context.Device(), device.transitionPool, 1, &commands);
+        return false;
+    }
+    device.initCommands = commands;
+    return true;
+}
+
+// Frees initialisation batches the GPU has finished with.
+void RetireInitBatches(VulkanRhiDevice& device) noexcept
+{
+    if (device.initRetired.Size() == 0)
+    {
+        return;
+    }
+    const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
+    u64 completed = 0;
+    if (ext.getSemaphoreCounterValue(device.context.Device(), device.internalTimeline,
+                                     &completed) != vk::Result::Success)
+    {
+        return;
+    }
+    usize kept = 0;
+    for (usize index = 0; index < device.initRetired.Size(); ++index)
+    {
+        const VulkanRhiDevice::RetiredInit entry = device.initRetired[index];
+        if (entry.value <= completed)
+        {
+            ext.freeCommandBuffers(device.context.Device(), device.transitionPool, 1,
+                                   &entry.commands);
+        }
+        else
+        {
+            device.initRetired[kept++] = entry;
+        }
+    }
+    while (device.initRetired.Size() > kept)
+    {
+        device.initRetired.PopBack();
+    }
+}
+
+}  // namespace
+
+void RecordTextureInit(VulkanRhiDevice& device, const TextureSlot& texture) noexcept
+{
+    const FormatInfo format = FormatInfoOf(texture.desc.format);
+    // Block-compressed images cannot be cleared and carry no compression metadata.
+    if (format.compressed || texture.external || !EnsureInitCommands(device))
+    {
+        return;
+    }
+    const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
+    vk::ImageSubresourceRange range{};
+    range.aspectMask = FormatAspects(texture.desc.format);
+    range.baseMipLevel = 0;
+    range.levelCount = texture.desc.mipLevels;
+    range.baseArrayLayer = 0;
+    range.layerCount =
+        texture.desc.dimension == TextureDimension::Dim3D ? 1U : texture.desc.arrayLayers;
+    vk::ImageMemoryBarrier2 toClear{};
+    toClear.srcStageMask = vk::Stage2::kTopOfPipe;
+    toClear.dstStageMask = vk::Stage2::kAllTransfer;
+    toClear.dstAccessMask = vk::Access2::kTransferWrite;
+    toClear.oldLayout = vk::ImageLayout::Undefined;
+    toClear.newLayout = vk::ImageLayout::TransferDstOptimal;
+    toClear.image = texture.image.image;
+    toClear.subresourceRange = range;
+    RecordBarriers(ext, device.initCommands, nullptr, 0, &toClear, 1);
+    if (format.depth || format.stencil)
+    {
+        vk::ClearDepthStencilValue zero{};
+        zero.depth = 0.0F;
+        zero.stencil = 0;
+        ext.cmdClearDepthStencilImage(device.initCommands, texture.image.image,
+                                      vk::ImageLayout::TransferDstOptimal, &zero, 1, &range);
+    }
+    else
+    {
+        vk::ClearColorValue zero{};
+        zero.uint32[0] = zero.uint32[1] = zero.uint32[2] = zero.uint32[3] = 0;
+        ext.cmdClearColorImage(device.initCommands, texture.image.image,
+                               vk::ImageLayout::TransferDstOptimal, &zero, 1, &range);
+    }
+    // The tracked state stays Undefined, whose barriers name UNDEFINED as the old
+    // layout; that is valid from any layout and keeps the zeroed metadata.
+    vk::ImageMemoryBarrier2 toAny = toClear;
+    toAny.srcStageMask = vk::Stage2::kAllTransfer;
+    toAny.srcAccessMask = vk::Access2::kTransferWrite;
+    toAny.dstStageMask = vk::Stage2::kAllCommands;
+    toAny.dstAccessMask = vk::Access2::kMemoryRead | vk::Access2::kMemoryWrite;
+    toAny.oldLayout = vk::ImageLayout::TransferDstOptimal;
+    toAny.newLayout = vk::ImageLayout::General;
+    RecordBarriers(ext, device.initCommands, nullptr, 0, &toAny, 1);
+}
+
+void RecordBufferInit(VulkanRhiDevice& device, const BufferSlot& buffer) noexcept
+{
+    if (buffer.buffer.block.mapped != nullptr)
+    {
+        std::memset(buffer.buffer.block.mapped, 0, static_cast<usize>(buffer.desc.sizeBytes));
+        return;
+    }
+    if (!EnsureInitCommands(device))
+    {
+        return;
+    }
+    const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
+    ext.cmdFillBuffer(device.initCommands, buffer.buffer.buffer, 0, vk::kWholeSize, 0);
+    vk::BufferMemoryBarrier2 done{};
+    done.srcStageMask = vk::Stage2::kAllTransfer;
+    done.srcAccessMask = vk::Access2::kTransferWrite;
+    done.dstStageMask = vk::Stage2::kAllCommands;
+    done.dstAccessMask = vk::Access2::kMemoryRead | vk::Access2::kMemoryWrite;
+    done.buffer = buffer.buffer.buffer;
+    done.offset = 0;
+    done.size = vk::kWholeSize;
+    RecordBarriers(ext, device.initCommands, &done, 1, nullptr, 0);
+}
+
+Status<Error> FlushResourceInit(VulkanRhiDevice& device, u64* waitValue) noexcept
+{
+    *waitValue = 0;
+    RetireInitBatches(device);
+    if (device.initCommands == nullptr)
+    {
+        return Status<Error>::Ok();
+    }
+    const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
+    vk::CommandBuffer commands = device.initCommands;
+    device.initCommands = nullptr;
+    if (ext.endCommandBuffer(commands) != vk::Result::Success)
+    {
+        ext.freeCommandBuffers(device.context.Device(), device.transitionPool, 1, &commands);
+        return Err(ErrorCode::Internal, "vulkan backend: resource initialisation failed to record");
+    }
+    vk::CommandBufferSubmitInfo commandInfo{};
+    commandInfo.commandBuffer = commands;
+    const u64 value = ++device.internalValue;
+    vk::SemaphoreSubmitInfo signal{};
+    signal.semaphore = device.internalTimeline;
+    signal.value = value;
+    signal.stageMask = vk::Stage2::kAllCommands;
+    vk::SubmitInfo2 submit{};
+    submit.commandBufferInfoCount = 1;
+    submit.pCommandBufferInfos = &commandInfo;
+    submit.signalSemaphoreInfoCount = 1;
+    submit.pSignalSemaphoreInfos = &signal;
+    const vk::Result result = ext.queueSubmit2(device.context.GraphicsQueue(), 1, &submit, 0);
+    if (result != vk::Result::Success)
+    {
+        ext.freeCommandBuffers(device.context.Device(), device.transitionPool, 1, &commands);
+        return Err(result == vk::Result::ErrorDeviceLost ? ErrorCode::DeviceLost
+                                                         : ErrorCode::Internal,
+                   "vulkan backend: resource initialisation submit failed");
+    }
+    (void)device.initRetired.TryPushBack(VulkanRhiDevice::RetiredInit{commands, value});
+    *waitValue = value;
+    return Status<Error>::Ok();
+}
+
+bool RecordQueryReset(VulkanRhiDevice& device, vk::QueryPool pool, u32 first, u32 count) noexcept
+{
+    if (!EnsureInitCommands(device))
+    {
+        return false;
+    }
+    device.context.DeviceFunctionsExt().cmdResetQueryPool(device.initCommands, pool, first, count);
+    return true;
+}
+
+Status<Error> FlushResourceInitAndWait(VulkanRhiDevice& device) noexcept
+{
+    u64 value = 0;
+    const Status<Error> flushed = FlushResourceInit(device, &value);
+    if (!flushed || value == 0)
+    {
+        return flushed;
+    }
+    vk::SemaphoreWaitInfo wait{};
+    wait.semaphoreCount = 1;
+    wait.pSemaphores = &device.internalTimeline;
+    wait.pValues = &value;
+    if (device.context.DeviceFunctionsExt().waitSemaphores(device.context.Device(), &wait, ~0ULL) !=
+        vk::Result::Success)
+    {
+        return Err(ErrorCode::DeviceLost, "vulkan backend: resource initialisation wait failed");
+    }
+    RetireInitBatches(device);
+    return Status<Error>::Ok();
+}
+
+namespace
+{
+
 // ---- Immediate work: transitions -------------------------------------------
 
 // Records `record` into a one-shot command buffer on the graphics queue, submits it,
 // and waits. Used for the device-level `Transition` and for swapchain setup, where
-// there is no caller-owned command list.
+// there is no caller-owned command list. Pending resource initialisation goes first.
 template <typename Record>
 [[nodiscard]] Status<Error> RunImmediate(VulkanRhiDevice& device, Record&& record) noexcept
 {
+    {
+        u64 initValue = 0;
+        const Status<Error> flushed = FlushResourceInit(device, &initValue);
+        if (!flushed)
+        {
+            return flushed;
+        }
+    }
     const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
     vk::CommandBufferAllocateInfo allocate{};
     allocate.commandPool = device.transitionPool;
@@ -1613,6 +2201,46 @@ Status<Error> ListCopyBuffer(void* internal, const BufferCopy& copy) noexcept
             "vulkan backend: a copy buffer or texture is stale, or its subresource is invalid");
     }
     const FormatInfo format = FormatInfoOf(texture->desc.format);
+    // A region outside the subresource or the buffer is undefined behaviour on
+    // Vulkan (a device lost on some drivers) where D3D12's runtime rejects it, so it
+    // is refused here by name.
+    {
+        const u32 mipWidth = MipExtent(texture->desc.width, copy.mipLevel);
+        const u32 mipHeight = MipExtent(texture->desc.height, copy.mipLevel);
+        const u32 mipDepth = texture->desc.dimension == TextureDimension::Dim3D
+                                 ? MipExtent(texture->desc.depth, copy.mipLevel)
+                                 : 1U;
+        const u32 blockWidth = format.blockWidth == 0 ? 1U : format.blockWidth;
+        const u32 blockHeight = format.blockHeight == 0 ? 1U : format.blockHeight;
+        // Block-compressed mips round up to whole blocks.
+        const u32 paddedWidth = (mipWidth + blockWidth - 1) / blockWidth * blockWidth;
+        const u32 paddedHeight = (mipHeight + blockHeight - 1) / blockHeight * blockHeight;
+        if (copy.width == 0 || copy.height == 0 || copy.depth == 0 || copy.x > paddedWidth ||
+            copy.width > paddedWidth - copy.x || copy.y > paddedHeight ||
+            copy.height > paddedHeight - copy.y || copy.z > mipDepth ||
+            copy.depth > mipDepth - copy.z)
+        {
+            return Err(ErrorCode::OutOfRange,
+                       "vulkan backend: a buffer-texture copy region leaves the subresource");
+        }
+        const u64 rowBytes =
+            static_cast<u64>((copy.width + blockWidth - 1) / blockWidth) * format.bytesPerBlock;
+        const u64 rows = (copy.height + blockHeight - 1) / blockHeight;
+        const u64 rowPitch = copy.bufferRowPitch != 0 ? copy.bufferRowPitch : rowBytes;
+        const u64 slicePitch = copy.bufferDepthPitch != 0 ? copy.bufferDepthPitch : rowPitch * rows;
+        if (rowPitch < rowBytes)
+        {
+            return Err(ErrorCode::InvalidArgument,
+                       "vulkan backend: the buffer row pitch is smaller than one row");
+        }
+        const u64 lastByte =
+            copy.bufferOffset + slicePitch * (copy.depth - 1) + rowPitch * (rows - 1) + rowBytes;
+        if (lastByte > buffer->desc.sizeBytes)
+        {
+            return Err(ErrorCode::OutOfRange,
+                       "vulkan backend: a buffer-texture copy reads past the end of the buffer");
+        }
+    }
     vk::BufferImageCopy region{};
     region.bufferOffset = copy.bufferOffset;
     // Vulkan counts the row and image heights in texels, the RHI in bytes.
@@ -1887,14 +2515,92 @@ Status<Error> ListSetDebugMarker(void* internal, const char* label) noexcept
     return Status<Error>::Ok();
 }
 
-Status<Error> ListWriteTimestamp(void*, TimestampQueryHeapHandle, u32) noexcept
+Status<Error> ListWriteTimestamp(void* internal, TimestampQueryHeapHandle heap,
+                                 u32 queryIndex) noexcept
 {
-    return Err(ErrorCode::Unsupported, "vulkan backend: timestamp queries are not implemented yet");
+    CommandListData& list = List(internal);
+    if (list.state != CommandListState::Recording)
+    {
+        return NotRecording();
+    }
+    if (list.queue == QueueKind::Copy)
+    {
+        // As on D3D12, whose copy queues cannot write timestamps.
+        return Err(ErrorCode::Unsupported,
+                   "vulkan backend: timestamp queries are unsupported on copy queues");
+    }
+    VulkanRhiDevice& device = *list.device;
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    const TimestampHeapSlot* slot = device.timestampHeaps.Resolve(heap);
+    if (slot == nullptr || queryIndex >= slot->queryCount)
+    {
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: timestamp heap or query index is invalid");
+    }
+    // After every earlier command completes, as D3D12's EndQuery timestamp.
+    device.context.DeviceFunctionsExt().cmdWriteTimestamp2(list.commands, vk::Stage2::kAllCommands,
+                                                           slot->pool, queryIndex);
+    return Status<Error>::Ok();
 }
 
-Status<Error> ListResolveTimestamps(void*, TimestampQueryHeapHandle, u32, u32) noexcept
+Status<Error> ListResolveTimestamps(void* internal, TimestampQueryHeapHandle heap, u32 firstQuery,
+                                    u32 queryCount) noexcept
 {
-    return Err(ErrorCode::Unsupported, "vulkan backend: timestamp queries are not implemented yet");
+    CommandListData& list = List(internal);
+    if (list.state != CommandListState::Recording)
+    {
+        return NotRecording();
+    }
+    if (list.queue == QueueKind::Copy)
+    {
+        return Err(ErrorCode::Unsupported,
+                   "vulkan backend: timestamp queries are unsupported on copy queues");
+    }
+    if (list.passOpen)
+    {
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: timestamps cannot be resolved inside a render pass");
+    }
+    VulkanRhiDevice& device = *list.device;
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    const TimestampHeapSlot* slot = device.timestampHeaps.Resolve(heap);
+    if (slot == nullptr)
+    {
+        return Err(ErrorCode::InvalidArgument,
+                   "vulkan backend: timestamp heap handle is stale or invalid");
+    }
+    if (queryCount == 0 || firstQuery >= slot->queryCount ||
+        queryCount > slot->queryCount - firstQuery)
+    {
+        return Err(ErrorCode::OutOfRange,
+                   "vulkan backend: timestamp resolve range exceeds the query heap");
+    }
+    const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
+    ext.cmdCopyQueryPoolResults(list.commands, slot->pool, firstQuery, queryCount,
+                                slot->readback.buffer, static_cast<u64>(firstQuery) * sizeof(u64),
+                                sizeof(u64), vk::kQueryResult64 | vk::kQueryResultWait);
+    // The copy is visible to the host once the list's fence passes, and the
+    // queries are reset after it so the next frame can write them again (D3D12
+    // query heaps need no reset; Vulkan queries do).
+    vk::BufferMemoryBarrier2 toHost{};
+    toHost.srcStageMask = vk::Stage2::kAllTransfer;
+    toHost.srcAccessMask = vk::Access2::kTransferWrite;
+    toHost.dstStageMask = vk::Stage2::kHost;
+    toHost.dstAccessMask = vk::Access2::kHostRead;
+    toHost.buffer = slot->readback.buffer;
+    toHost.offset = 0;
+    toHost.size = vk::kWholeSize;
+    vk::MemoryBarrier2 ordered{};
+    ordered.srcStageMask = vk::Stage2::kAllCommands;
+    ordered.dstStageMask = vk::Stage2::kAllCommands;
+    vk::DependencyInfo dependency{};
+    dependency.memoryBarrierCount = 1;
+    dependency.pMemoryBarriers = &ordered;
+    dependency.bufferMemoryBarrierCount = 1;
+    dependency.pBufferMemoryBarriers = &toHost;
+    ext.cmdPipelineBarrier2(list.commands, &dependency);
+    ext.cmdResetQueryPool(list.commands, slot->pool, firstQuery, queryCount);
+    return Status<Error>::Ok();
 }
 
 RenderPassInfo ListCurrentRenderPass(const void* internal) noexcept
@@ -2051,6 +2757,17 @@ Status<Error> VkSubmit(void* internal, const SubmitDesc& desc) noexcept
     VulkanRhiDevice& device = Self(internal);
     const std::lock_guard<std::mutex> lock(device.mutex);
     const vk::DeviceApiExt& ext = device.context.DeviceFunctionsExt();
+    // New resources are zeroed before any work that could read them. On the
+    // graphics queue the batch's barrier orders it before this submission; another
+    // queue waits for it.
+    u64 initValue = 0;
+    {
+        const Status<Error> flushed = FlushResourceInit(device, &initValue);
+        if (!flushed)
+        {
+            return flushed;
+        }
+    }
 
     DynamicArray<vk::CommandBufferSubmitInfo> commands(*device.allocator);
     DynamicArray<vk::SemaphoreSubmitInfo> waits(*device.allocator);
@@ -2091,6 +2808,14 @@ Status<Error> VkSubmit(void* internal, const SubmitDesc& desc) noexcept
         wait.stageMask = vk::Stage2::kAllCommands;
         (void)waits.TryPushBack(wait);
     }
+    if (initValue != 0 && desc.queue != QueueKind::Graphics)
+    {
+        vk::SemaphoreSubmitInfo init{};
+        init.semaphore = device.internalTimeline;
+        init.value = initValue;
+        init.stageMask = vk::Stage2::kAllCommands;
+        (void)waits.TryPushBack(init);
+    }
     // Work after a swapchain acquire waits for the image, once, through the gate.
     if (desc.queue == QueueKind::Graphics && device.gateValue != 0)
     {
@@ -2115,13 +2840,29 @@ Status<Error> VkSubmit(void* internal, const SubmitDesc& desc) noexcept
         (void)signals.TryPushBack(signal);
         info.signalledValue = desc.signals[index].value;
     }
-    // Present waits for every earlier graphics submit through this timeline.
-    u64 timelineValue = 0;
-    if (desc.queue == QueueKind::Graphics)
+    // A sparse bind on this queue kind runs before this submission (D3D12 orders
+    // UpdateTileMappings on its queue).
+    const u32 kindIndex = static_cast<u32>(desc.queue);
+    vk::Semaphore kindTimeline = desc.queue == QueueKind::Graphics
+                                     ? device.internalTimeline
+                                     : device.queueTimeline[kindIndex];
+    if (device.pendingBind[kindIndex] != 0)
     {
-        timelineValue = ++device.internalValue;
+        vk::SemaphoreSubmitInfo bind{};
+        bind.semaphore = kindTimeline;
+        bind.value = device.pendingBind[kindIndex];
+        bind.stageMask = vk::Stage2::kAllCommands;
+        (void)waits.TryPushBack(bind);
+    }
+    // Every submission signals its kind's timeline: present waits for every
+    // earlier graphics submit through the graphics one, and sparse binds wait for
+    // the work already on their queue.
+    u64* kindValue =
+        desc.queue == QueueKind::Graphics ? &device.internalValue : &device.queueValue[kindIndex];
+    const u64 timelineValue = ++(*kindValue);
+    {
         vk::SemaphoreSubmitInfo order{};
-        order.semaphore = device.internalTimeline;
+        order.semaphore = kindTimeline;
         order.value = timelineValue;
         order.stageMask = vk::Stage2::kAllCommands;
         (void)signals.TryPushBack(order);
@@ -2144,6 +2885,15 @@ Status<Error> VkSubmit(void* internal, const SubmitDesc& desc) noexcept
         queue = device.context.TransferQueue();
     }
     const vk::Result result = ext.queueSubmit2(queue, 1, &submit, 0);
+    if (result != vk::Result::Success)
+    {
+        // Nothing was signalled: take the value back so later waits stay reachable.
+        --(*kindValue);
+    }
+    else
+    {
+        device.pendingBind[kindIndex] = 0;
+    }
     if (result == vk::Result::ErrorDeviceLost)
     {
         return Err(ErrorCode::DeviceLost, "vulkan backend: device lost on submit");
@@ -2239,11 +2989,18 @@ SubmissionInfo VkSubmissionInfo(const void* internal, QueueKind kind) noexcept
                              vk::ImageSubresourceRange{vk::ImageAspect::kColor, 0, 1, 0, 1},
                              ResourceState::Undefined, ResourceState::Present));
     }
-    return RunImmediate(device,
-                        [&](vk::CommandBuffer commands) noexcept {
-                            RecordBarriers(ext, commands, nullptr, 0, barriers.Data(),
-                                           static_cast<u32>(barriers.Size()));
-                        });
+    struct RecordPresentBarriers
+    {
+        const vk::DeviceApiExt& ext;
+        const DynamicArray<vk::ImageMemoryBarrier2>& barriers;
+
+        void operator()(vk::CommandBuffer commands) const noexcept
+        {
+            RecordBarriers(ext, commands, nullptr, 0, barriers.Data(),
+                           static_cast<u32>(barriers.Size()));
+        }
+    };
+    return RunImmediate(device, RecordPresentBarriers{ext, barriers});
 }
 
 void UnregisterSwapchainImages(VulkanRhiDevice& device, SwapChainData& data) noexcept
@@ -2587,6 +3344,16 @@ Status<Error> InitializeGpuObjects(VulkanRhiDevice& device) noexcept
         device.internalTimeline = 0;
         return Err(ErrorCode::Internal, "vulkan backend: internal timeline creation failed");
     }
+    // The compute and copy queues' own timelines (the graphics queue's is above).
+    for (u32 kind = 1; kind < kQueueKindCount; ++kind)
+    {
+        if (ext.createSemaphore(device.context.Device(), &semaphoreInfo, nullptr,
+                                &device.queueTimeline[kind]) != vk::Result::Success)
+        {
+            device.queueTimeline[kind] = 0;
+            return Err(ErrorCode::Internal, "vulkan backend: queue timeline creation failed");
+        }
+    }
     vk::CommandPoolCreateInfo poolInfo{};
     poolInfo.flags = vk::CommandPoolCreate::kTransient | vk::CommandPoolCreate::kResetCommandBuffer;
     poolInfo.queueFamilyIndex = info.queues.graphics;
@@ -2603,6 +3370,9 @@ Status<Error> InitializeGpuObjects(VulkanRhiDevice& device) noexcept
         return empty;
     }
     device.drawIndirectCountSupported = info.drawIndirectCount;
+    device.shaderFeatures.drawParameters = info.shaderDrawParameters;
+    device.shaderFeatures.storageImageReadWithoutFormat = info.storageImageReadWithoutFormat;
+    device.shaderFeatures.storageImageWriteWithoutFormat = info.storageImageWriteWithoutFormat;
     if (info.debugUtilsEnabled)
     {
         device.beginLabel = reinterpret_cast<vk::PFN_CmdBeginDebugUtilsLabelEXT>(
@@ -2654,6 +3424,11 @@ void VulkanRhiDevice::ReleaseGpuObjects() noexcept
         pipelines.DestroyDescriptorPool(descriptorPools[index]);
     }
     descriptorPools.Clear();
+    for (usize index = 0; index < uabDescriptorPools.Size(); ++index)
+    {
+        pipelines.DestroyDescriptorPool(uabDescriptorPools[index]);
+    }
+    uabDescriptorPools.Clear();
     for (usize index = 0; index < layouts.Size(); ++index)
     {
         if (layouts.At(index).alive)
@@ -2668,8 +3443,20 @@ void VulkanRhiDevice::ReleaseGpuObjects() noexcept
     }
     if (transitionPool != 0)
     {
+        // Destroying the pool frees the pending and retired initialisation batches;
+        // the device is idle here (ReleaseAll waits first).
+        initCommands = nullptr;
+        initRetired.Clear();
         ext.destroyCommandPool(context.Device(), transitionPool, nullptr);
         transitionPool = 0;
+    }
+    for (u32 kind = 0; kind < kQueueKindCount; ++kind)
+    {
+        if (queueTimeline[kind] != 0)
+        {
+            ext.destroySemaphore(context.Device(), queueTimeline[kind], nullptr);
+            queueTimeline[kind] = 0;
+        }
     }
     if (internalTimeline != 0)
     {

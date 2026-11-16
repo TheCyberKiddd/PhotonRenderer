@@ -5,6 +5,7 @@
 #include <cyber/renderer/bindless_table.h>
 #include <cyber/renderer/frame_stream.h>
 #include <cyber/rhi/backend.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/binding.h>
 #include <cyber/rhi/buffer.h>
 #include <cyber/rhi/command_list.h>
@@ -558,7 +559,15 @@ void PrintTimings(const char* name, TimingSamples& timings) noexcept
     constexpr const char* kBuildConfiguration = "Release";
 #endif
     std::FILE* file = nullptr;
-    if (fopen_s(&file, "phase19-submission-report.txt", "wb") != 0 || file == nullptr)
+#if defined(_MSC_VER)
+    if (fopen_s(&file, "phase19-submission-report.txt", "wb") != 0)
+    {
+        file = nullptr;
+    }
+#else
+    file = std::fopen("phase19-submission-report.txt", "wb");
+#endif
+    if (file == nullptr)
     {
         std::printf("Could not create phase19-submission-report.txt.\n");
         return false;
@@ -632,21 +641,24 @@ int main(int argc, char** argv)
         {
             useWarp = true;
         }
-        else
+        else if (!cyber::rhi::IsBackendArgument(argv[argumentIndex]))
         {
-            std::printf("Unknown argument: %s\nUsage: cyber_sample_frame_streaming [--warp]\n",
+            std::printf("Unknown argument: %s\nUsage: cyber_sample_frame_streaming [--warp] "
+                        "[--backend=d3d12|vulkan]\n",
                         argv[argumentIndex]);
             return 1;
         }
     }
 
     HeapAllocator heap;
-    const cyber::rhi::Backend* backend = cyber::rhi::D3D12Backend();
+    // `--warp` picks the last (software) adapter on either backend.
+    const cyber::rhi::Backend* backend =
+        cyber::rhi::SelectBackend(argc, argv, cyber::rhi::D3D12Backend());
     const u32 adapterCount = backend != nullptr ? backend->enumerateAdapters(nullptr, 0) : 0;
     if (adapterCount == 0)
     {
-        std::printf("No D3D12 backend or adapter is available.\n");
-        return 1;
+        std::printf("No adapter is available on the selected backend.\n");
+        return 77;  // skipped: no adapter
     }
 
     DeviceDesc deviceDesc{};

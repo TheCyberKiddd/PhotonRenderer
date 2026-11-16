@@ -21,6 +21,7 @@
 #include <cyber/renderer/gpu_culling_pipeline.h>
 #include <cyber/renderer/gpu_driven.h>
 #include <cyber/rhi/backend.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/binding.h>
 #include <cyber/rhi/buffer.h>
 #include <cyber/rhi/capabilities.h>
@@ -275,13 +276,13 @@ void AddTriangle(DynamicArray<Vertex>& vertices, DynamicArray<u32>& indices, Vec
     return value;
 }
 
-[[nodiscard]] bool OpenDevice(Device& device, HeapAllocator& heap,
-                              char (&name)[kAdapterNameBytes]) noexcept
+[[nodiscard]] bool OpenDevice(Device& device, HeapAllocator& heap, char (&name)[kAdapterNameBytes],
+                              const Backend* backend) noexcept
 {
-    const Backend* backend = D3D12Backend();
     if (backend == nullptr)
     {
-        std::fprintf(stderr, "This build has no Direct3D 12 backend.\n");
+        std::fprintf(stderr,
+                     "The selected backend is not in this build (--backend=d3d12|vulkan).\n");
         return false;
     }
     AdapterInfo adapters[8]{};
@@ -295,7 +296,7 @@ void AddTriangle(DynamicArray<Vertex>& vertices, DynamicArray<u32>& indices, Vec
     chosen = chosen == count ? 0 : chosen;
     if (count == 0)
     {
-        std::fprintf(stderr, "No Direct3D 12 adapter is available.\n");
+        std::fprintf(stderr, "No adapter is available on the selected backend.\n");
         return false;
     }
     DeviceDesc desc{};
@@ -338,15 +339,30 @@ void AddTriangle(DynamicArray<Vertex>& vertices, DynamicArray<u32>& indices, Vec
 
 }  // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    for (int index = 1; index < argc; ++index)
+    {
+        if (!cyber::rhi::IsBackendArgument(argv[index]))
+        {
+            std::fprintf(stderr, "usage: cyber_sample_gpu_driven [--backend=d3d12|vulkan]\n");
+            return 2;
+        }
+    }
     HeapAllocator heap;
     Device device;
     char adapterName[kAdapterNameBytes]{};
-    if (!OpenDevice(device, heap, adapterName))
+    const Backend* backend = cyber::rhi::SelectBackend(argc, argv, D3D12Backend());
+    if (backend == nullptr || backend->enumerateAdapters(nullptr, 0) == 0)
+    {
+        std::fprintf(stderr, "No adapter is available on the selected backend.\n");
+        return 77;  // skipped: no adapter
+    }
+    if (!OpenDevice(device, heap, adapterName, backend))
     {
         return 1;
     }
+    std::printf("Backend: %s\n", device.BackendName());
 
     // --- The scene, described once -------------------------------------
     DynamicArray<Vertex> vertices(heap);

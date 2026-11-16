@@ -164,6 +164,23 @@ public:
     // Creates an optimal- or linear-tiling image and binds device-local memory.
     [[nodiscard]] Status<Error> CreateImage(const VulkanImageDesc& desc, VulkanImage* out) noexcept;
     void DestroyImage(VulkanImage& image) noexcept;
+    // A reserved (sparse-resident) image: address space only, no memory bound.
+    // `aliased` adds sparse aliasing so one memory range may back several tiles.
+    // `requirements` receives the image's memory requirements (the alignment is
+    // the sparse block size). Destroyed with `DestroyImage`.
+    [[nodiscard]] Status<Error> CreateSparseImage(const VulkanImageDesc& desc, bool aliased,
+                                                  VulkanImage* out,
+                                                  vk::MemoryRequirements* requirements) noexcept;
+    // One driver allocation of `sizeBytes` in a device-local type allowed by
+    // `typeBits`, for tile heaps. Counted against the driver allocation cap.
+    [[nodiscard]] Status<Error> AllocateRaw(u64 sizeBytes, u32 typeBits, vk::DeviceMemory* out,
+                                            u32* memoryType) noexcept;
+    void FreeRaw(vk::DeviceMemory memory) noexcept;
+    // The device-local memory type the allocator would choose for `typeBits`.
+    [[nodiscard]] bool DeviceLocalType(u32 typeBits, u32* out) const noexcept
+    {
+        return SelectMemoryType(VulkanMemoryClass::DeviceLocal, typeBits, out);
+    }
 
     // Views and samplers are plain driver objects with no memory of their own.
     [[nodiscard]] Status<Error> CreateImageView(const VulkanImage& image, vk::ImageViewType type,

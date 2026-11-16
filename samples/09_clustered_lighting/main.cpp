@@ -6,6 +6,7 @@
 #include <cyber/memory/span.h>
 #include <cyber/renderer/clustered_lighting.h>
 #include <cyber/rhi/backend.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/binding.h>
 #include <cyber/rhi/buffer.h>
 #include <cyber/rhi/capabilities.h>
@@ -925,7 +926,7 @@ LayoutEntry(u32 binding, cyber::rhi::BindingType type, u32 registerIndex) noexce
         }
     }
 
-    std::printf("backend=d3d12 lights=%zu resolution=%ux%u tile=%u slices=%u clusters=%u "
+    std::printf("lights=%zu resolution=%ux%u tile=%u slices=%u clusters=%u "
                 "gpu_indices=%llu max_occupancy=%u overflow=0 verified_pixels=%zu "
                 "max_pbr_error=%.6f\n",
                 cpuLights.Size(), shadeParams.grid0[0], shadeParams.grid0[1], kTileSize,
@@ -936,31 +937,44 @@ LayoutEntry(u32 binding, cyber::rhi::BindingType type, u32 registerIndex) noexce
 
 }  // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     using cyber::rhi::DeviceDesc;
     using cyber::rhi::Feature;
 
-    if (!cyber::rhi::IsD3D12CompiledIn())
+    for (int index = 1; index < argc; ++index)
     {
-        std::fprintf(stderr, "GPU clustered lighting sample requires the D3D12 backend.\n");
-        return 2;
+        if (!cyber::rhi::IsBackendArgument(argv[index]))
+        {
+            std::fprintf(stderr,
+                         "usage: cyber_sample_clustered_lighting [--backend=d3d12|vulkan]\n");
+            return 2;
+        }
+    }
+    const cyber::rhi::Backend* backend =
+        cyber::rhi::SelectBackend(argc, argv, cyber::rhi::D3D12Backend());
+    if (backend == nullptr || backend->enumerateAdapters(nullptr, 0) == 0)
+    {
+        std::fprintf(stderr, "GPU clustered lighting sample needs a D3D12 or Vulkan adapter.\n");
+        return 77;  // skipped: no adapter
     }
 
     HeapAllocator allocator;
     DeviceDesc deviceDesc{};
-    deviceDesc.backend = cyber::rhi::D3D12Backend();
+    deviceDesc.backend = backend;
     deviceDesc.label = "GPU clustered lighting sample";
     auto createdDevice = Device::Create(deviceDesc, allocator);
     if (!createdDevice)
     {
-        PrintFailure("Create D3D12 device", createdDevice.Error());
+        PrintFailure("Create device", createdDevice.Error());
         return 2;
     }
     Device device = std::move(createdDevice.Value());
+    std::printf("Backend: %s, adapter: %s\n", device.BackendName(),
+                device.Capabilities().adapter.name);
     if (!device.Capabilities().features.Has(Feature::Compute))
     {
-        std::fprintf(stderr, "Selected D3D12 adapter does not support compute.\n");
+        std::fprintf(stderr, "Selected adapter does not support compute.\n");
         return 2;
     }
 
@@ -980,9 +994,12 @@ int main()
     const u64 indexBytes = static_cast<u64>(clusterCount) * kMaxLightsPerCluster * sizeof(u32);
     const u64 outputBytes = surfaceCount * sizeof(float) * 4;
 
-    std::array<GpuLight, kLightCount> gpuLights{};
-    std::array<PbrPointLight, kLightCount> cpuLights{};
-    std::array<ClusterLightBound, kLightCount> bounds{};
+    // Static, not on the stack: with them the frame of `main` left too little of
+    // the 1 MiB main-thread stack for the Vulkan driver's initialisation, which
+    // runs inside the first instance creation.
+    static std::array<GpuLight, kLightCount> gpuLights{};
+    static std::array<PbrPointLight, kLightCount> cpuLights{};
+    static std::array<ClusterLightBound, kLightCount> bounds{};
     for (u32 index = 0; index < kLightCount; ++index)
     {
         const u32 hash = index * 747796405U + 2891336453U;

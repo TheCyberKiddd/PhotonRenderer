@@ -1,3 +1,5 @@
+#include "test_backend.h"
+
 #include <cyber/core/log.h>
 #include <cyber/core/log_sinks.h>
 #include <cyber/jobs/job_system.h>
@@ -80,7 +82,7 @@ struct Adapter
 // Every Direct3D 12 adapter the machine exposes, hardware first.
 [[nodiscard]] u32 ListAdapters(Adapter (&out)[8]) noexcept
 {
-    const Backend* backend = D3D12Backend();
+    const Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr)
     {
         return 0;
@@ -109,7 +111,7 @@ struct Adapter
 [[nodiscard]] bool OpenDevice(const Adapter& adapter, Device& out, HeapAllocator& heap) noexcept
 {
     DeviceDesc desc{};
-    desc.backend = D3D12Backend();
+    desc.backend = cyber::rhi::test::TestBackend();
     desc.adapterIndex = adapter.index;
     auto created = Device::Create(desc, heap);
     if (!created)

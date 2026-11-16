@@ -1,3 +1,5 @@
+#include "test_backend.h"
+
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/renderer/raytracing_path.h>
 #include <cyber/rhi/backend.h>
@@ -208,7 +210,7 @@ CG_TEST(renderer_raytracing_null_device_falls_back)
 // rasterizes.
 CG_TEST(renderer_raytracing_d3d12_adapters_report_consistently)
 {
-    const cyber::rhi::Backend* backend = cyber::rhi::D3D12Backend();
+    const cyber::rhi::Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr)
     {
         CG_SKIP("this build does not contain the D3D12 backend");

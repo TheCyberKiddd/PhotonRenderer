@@ -4,6 +4,7 @@
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/memory/span.h>
 #include <cyber/platform/platform.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/command_list.h>
 #include <cyber/rhi/d3d12.h>
 #include <cyber/rhi/device.h>
@@ -13,6 +14,8 @@
 #include <cyber/rhi/swapchain.h>
 
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <utility>
 
 using cyber::core::Error;
@@ -215,9 +218,25 @@ void PrintFrameStep(bool enabled, const char* step) noexcept
 
 }  // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     (void)std::setvbuf(stdout, nullptr, _IONBF, 0);
+    // `--frames=N` closes the window after N presented frames (0 = run until closed),
+    // so the sample can run unattended on both backends.
+    unsigned long frameLimit = 0;
+    for (int index = 1; index < argc; ++index)
+    {
+        if (std::strncmp(argv[index], "--frames=", 9) == 0)
+        {
+            frameLimit = std::strtoul(argv[index] + 9, nullptr, 10);
+        }
+        else if (!cyber::rhi::IsBackendArgument(argv[index]))
+        {
+            std::printf(
+                "usage: cyber_sample_d3d12_markers [--frames=N] [--backend=d3d12|vulkan]\n");
+            return 2;
+        }
+    }
     ConsoleLogSink logSink;
     if (!cyber::core::DefaultLogger().AddSink(&logSink))
     {
@@ -228,14 +247,14 @@ int main()
     if (!cyber::platform::IsWindowSystemSupported())
     {
         std::printf("D3D12 marker sample requires a window system.\n");
-        return 0;
+        return 77;  // skipped
     }
 
-    const Backend* backend = D3D12Backend();
+    const Backend* backend = cyber::rhi::SelectBackend(argc, argv, D3D12Backend());
     if (backend == nullptr)
     {
-        std::printf("D3D12 marker sample was built without the D3D12 backend.\n");
-        return 0;
+        std::printf("GPU marker sample: the selected backend is not in this build.\n");
+        return 77;  // skipped
     }
 
     HeapAllocator heap;
@@ -261,8 +280,8 @@ int main()
     const u32 adapterCount = backend->enumerateAdapters(nullptr, 0);
     if (adapterCount == 0)
     {
-        std::printf("No D3D12 adapter is available.\n");
-        return 1;
+        std::printf("No adapter is available on the selected backend.\n");
+        return 77;  // skipped: no adapter
     }
     deviceDesc.adapterIndex = 0;
     auto createdDevice = Device::Create(deviceDesc, heap);
@@ -328,7 +347,12 @@ int main()
             return 1;
         }
         traceFrame = false;
+        if (frameLimit != 0 && --frameLimit == 0)
+        {
+            window.RequestClose();
+        }
     }
+    (void)device.WaitIdle();
 
     return 0;
 }

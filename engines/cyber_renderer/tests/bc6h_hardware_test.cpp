@@ -6,6 +6,8 @@
 // are uploaded as BC6H textures, loaded by a compute shader, and compared with
 // `DecodeBc6hBlock` bit for bit, for both the unsigned and signed formats.
 
+#include "test_backend.h"
+
 #include <cyber/assets/bc_codec.h>
 #include <cyber/core/log.h>
 #include <cyber/core/log_sinks.h>
@@ -328,7 +330,7 @@ bool DecodeOnGpu(rhi::Device& device, rhi::Format format, const std::vector<Byte
 CG_TEST(bc6h_cpu_decoder_matches_the_hardware_decoder_on_every_mode)
 {
     LogGuard logGuard;
-    const rhi::Backend* backend = rhi::D3D12Backend();
+    const rhi::Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr)
     {
         CG_SKIP("no Direct3D 12 runtime");

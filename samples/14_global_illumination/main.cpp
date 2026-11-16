@@ -20,6 +20,7 @@
 #include <cyber/memory/span.h>
 #include <cyber/renderer/raytracing_path.h>
 #include <cyber/rhi/backend.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/d3d12.h>
 #include <cyber/rhi/device.h>
 #include <cyber/software/antialias.h>
@@ -430,14 +431,13 @@ bool RenderDenoiseComparison(const TopLevelAccelerationStructure& tlas, const Ve
     return WriteImage(path, composite, allocator, writeDesc).IsOk();
 }
 
-void PrintRayTracingPolicy(HeapAllocator& allocator)
+void PrintRayTracingPolicy(HeapAllocator& allocator, const cyber::rhi::Backend* backend)
 {
     using namespace cyber::renderer;
-    const cyber::rhi::Backend* backend = cyber::rhi::D3D12Backend();
     if (backend == nullptr)
     {
-        std::printf(
-            "Ray tracing: this build has no D3D12 backend; shadows use the rasterized path.\n");
+        std::printf("Ray tracing: no hardware backend is selected; shadows use the rasterized "
+                    "path.\n");
         return;
     }
     const u32 adapterCount = backend->enumerateAdapters(nullptr, 0);
@@ -466,12 +466,24 @@ void PrintRayTracingPolicy(HeapAllocator& allocator)
 
 int main(int argc, char** argv)
 {
-    const char* outputPath = argc > 1 ? argv[1] : "global_illumination.tga";
-    if (argc > 2)
+    const char* outputPath = "global_illumination.tga";
+    int positional = 0;
+    for (int index = 1; index < argc; ++index)
     {
-        std::printf("usage: cyber_sample_global_illumination [output.tga]\n");
-        return 2;
+        if (cyber::rhi::IsBackendArgument(argv[index]))
+        {
+            continue;
+        }
+        if (positional++ != 0)
+        {
+            std::printf("usage: cyber_sample_global_illumination [output.tga] "
+                        "[--backend=d3d12|vulkan]\n");
+            return 2;
+        }
+        outputPath = argv[index];
     }
+    const cyber::rhi::Backend* rhiBackend =
+        cyber::rhi::SelectBackend(argc, argv, cyber::rhi::D3D12Backend());
 
     HeapAllocator allocator;
     Group groups[kGroupCount] = {Group(allocator), Group(allocator), Group(allocator),
@@ -668,7 +680,7 @@ int main(int argc, char** argv)
                 volume.DataSizeBytes());
     std::printf("Render: two %dx%d frames, 2x2 supersampled, ray-traced lamp shadows, %.0f ms.\n",
                 kWidth, kHeight, renderMs);
-    PrintRayTracingPolicy(allocator);
+    PrintRayTracingPolicy(allocator, rhiBackend);
     std::printf("Wrote %s (left: flat ambient; right: baked irradiance volume)\n", outputPath);
     std::printf("Wrote %s (raw 1 spp, denoised 1 frame, denoised 8 frames, 256 spp reference)\n",
                 denoisePath);

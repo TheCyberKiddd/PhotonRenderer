@@ -1,3 +1,5 @@
+#include "test_backend.h"
+
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/memory/span.h>
 #include <cyber/renderer/shadow_pass.h>
@@ -393,7 +395,7 @@ CG_TEST(renderer_shadow_pass_rasterizes_and_samples_depth_on_d3d12)
     using namespace cyber::renderer;
     using namespace cyber::rhi;
 
-    const Backend* backend = D3D12Backend();
+    const Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr || backend->enumerateAdapters == nullptr ||
         backend->enumerateAdapters(nullptr, 0) == 0)
     {

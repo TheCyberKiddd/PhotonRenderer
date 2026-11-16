@@ -1,4 +1,5 @@
 set(CYBER_RHI_SOURCES
+    src/backend_select.cpp
     src/command_list.cpp
     # Compiled on every platform: without the SDK the file's fallback branch
     # defines `D3D12Backend()` to return null, so the symbol `d3d12.h` declares
@@ -37,6 +38,7 @@ set(CYBER_RHI_HEADERS
     include/cyber/rhi/binding.h
     include/cyber/rhi/buffer.h
     include/cyber/rhi/capabilities.h
+    include/cyber/rhi/backend_select.h
     include/cyber/rhi/command_list.h
     include/cyber/rhi/conventions.h
     include/cyber/rhi/d3d12.h
@@ -94,12 +96,22 @@ if(CYBER_RHI_ENABLE_VULKAN)
         src/vulkan/vulkan_pipelines.cpp
         src/vulkan/vulkan_swapchain.cpp
         src/vulkan/vulkan_device.cpp
-        src/vulkan/vulkan_device_gpu.cpp)
+        src/vulkan/vulkan_device_gpu.cpp
+        src/vulkan/vulkan_device_features.cpp
+        src/vulkan/hlsl_spirv_core.cpp
+        src/vulkan/hlsl_spirv_decl.cpp
+        src/vulkan/hlsl_spirv_expr.cpp)
     if(NOT WIN32)
         target_link_libraries(cyber_rhi PUBLIC ${CMAKE_DL_LIBS})
     endif()
     # Runs wherever a Vulkan runtime exists and skips cleanly where it does not,
     # so CI without a GPU stays green and a machine with one is validated.
+    # The HLSL-to-SPIR-V compiler needs no GPU: it runs on every CI machine.
+    cyber_add_test(
+        NAME rhi_hlsl_spirv
+        SOURCES tests/hlsl_spirv_test.cpp
+        DEPENDS rhi memory
+    )
     cyber_add_test(
         NAME rhi_vulkan_context
         SOURCES tests/vulkan_context_test.cpp
@@ -355,6 +367,7 @@ if(CYBER_RHI_ENABLE_D3D12)
         SOURCES tests/timestamps_test.cpp
         DEPENDS rhi memory
     )
+    cyber_add_vulkan_variant(rhi_timestamps)
 endif()
 
 # Names are read back from D3D12; marker ordering is tested on the validation

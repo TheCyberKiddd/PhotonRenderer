@@ -46,7 +46,9 @@ Dependencies are one-way. A module may depend only on modules with a lower
 - Cache payloads and shader source are treated as hostile input.
 - Failed hot reloads retain the last successfully published shader version.
 - Worker allocations are serialized through a private allocator adapter.
-- The module emits HLSL text only; it does not compile platform bytecode.
+- The module emits HLSL text only; it does not compile platform bytecode. D3D12
+  compiles that HLSL with d3dcompiler, and the Vulkan backend compiles it to SPIR-V
+  with its own compiler (`cyber_rhi`, ADR 0030), so Cyber shaders run on both.
 
 ## Non-goals
 

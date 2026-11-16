@@ -21,3 +21,6 @@ if(TARGET cyber_test_backend_compare)
         PRIVATE CYBER_BACKEND_COMPARE_IMAGE_DIR="${CMAKE_BINARY_DIR}/backend_compare_images"
     )
 endif()
+
+# Phase 34: the same comparison with the GPU half on Vulkan.
+cyber_add_vulkan_variant(backend_compare)

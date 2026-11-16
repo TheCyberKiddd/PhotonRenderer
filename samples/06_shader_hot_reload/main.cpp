@@ -10,6 +10,7 @@
 #include <cyber/platform/window.h>
 #include <cyber/renderer/hot_pipeline.h>
 #include <cyber/rhi/backend.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/buffer.h>
 #include <cyber/rhi/command_list.h>
 #include <cyber/rhi/d3d12.h>
@@ -444,7 +445,7 @@ LoadAndCompile(const String& path, HeapAllocator& allocator) noexcept
         {
             selfTest = true;
         }
-        else
+        else if (!cyber::rhi::IsBackendArgument(argv[index]))
         {
             return false;
         }
@@ -459,7 +460,8 @@ int main(int argc, char** argv)
     bool selfTestEnabled = false;
     if (!ParseArguments(argc, argv, selfTestEnabled))
     {
-        std::printf("usage: cyber_sample_shader_hot_reload [--self-test]\n");
+        std::printf("usage: cyber_sample_shader_hot_reload [--self-test] "
+                    "[--backend=d3d12|vulkan]\n");
         return 2;
     }
 
@@ -472,14 +474,14 @@ int main(int argc, char** argv)
     if (!cyber::platform::IsWindowSystemSupported())
     {
         std::printf("The hot-reload sample requires a window system.\n");
-        return 1;
+        return 77;  // skipped: no window system
     }
 
-    const Backend* backend = cyber::rhi::D3D12Backend();
+    const Backend* backend = cyber::rhi::SelectBackend(argc, argv, cyber::rhi::D3D12Backend());
     if (backend == nullptr || backend->enumerateAdapters(nullptr, 0) == 0)
     {
-        std::printf("No D3D12 backend or adapter is available.\n");
-        return 1;
+        std::printf("No adapter is available on the selected backend (--backend=d3d12|vulkan).\n");
+        return 77;  // skipped: no adapter
     }
 
     HeapAllocator heap;

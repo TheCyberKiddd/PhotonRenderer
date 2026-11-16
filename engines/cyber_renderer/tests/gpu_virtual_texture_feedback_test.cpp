@@ -9,6 +9,8 @@
 //      CPU sampler.
 // The Null backend checks the readback ring's bookkeeping.
 
+#include "test_backend.h"
+
 #include <cyber/core/log.h>
 #include <cyber/core/log_sinks.h>
 #include <cyber/memory/heap_allocator.h>
@@ -626,7 +628,7 @@ CG_TEST(gpu_feedback_ring_tracks_frames_and_stalls_when_full)
 CG_TEST(gpu_feedback_counts_and_closed_loop_match_cpu_on_d3d12)
 {
     LogGuard logGuard;
-    const rhi::Backend* backend = rhi::D3D12Backend();
+    const rhi::Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr)
     {
         CG_SKIP("no Direct3D 12 runtime");

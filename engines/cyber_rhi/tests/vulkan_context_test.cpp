@@ -151,6 +151,24 @@ CG_TEST(vulkan_context_creates_and_reports_a_device)
                 vk::VersionMajor(info.apiVersion), vk::VersionMinor(info.apiVersion),
                 info.validationLayerEnabled ? "on" : "off (layer not installed)",
                 info.synchronizationValidationEnabled ? "on" : "off");
+    std::printf("  optional: sparse binding %d, sparse 2D residency %d (standard shape %d, "
+                "strict %d), timestamps %u bits / %.3f ns, scalar layout %d, draw parameters %d, "
+                "storage images without format %d/%d, wireframe %d, depth clamp %d, "
+                "first-instance indirect %d\n",
+                info.sparseBinding ? 1 : 0, info.sparseResidencyImage2D ? 1 : 0,
+                info.sparseStandard2DBlockShape ? 1 : 0, info.sparseNonResidentStrict ? 1 : 0,
+                info.timestampValidBits, static_cast<double>(info.timestampPeriodNs),
+                info.scalarBlockLayout ? 1 : 0, info.shaderDrawParameters ? 1 : 0,
+                info.storageImageReadWithoutFormat ? 1 : 0,
+                info.storageImageWriteWithoutFormat ? 1 : 0, info.fillModeNonSolid ? 1 : 0,
+                info.depthClamp ? 1 : 0, info.drawIndirectFirstInstance ? 1 : 0);
+    std::printf("  limits: storage offset alignment %u, uniform offset alignment %u, "
+                "color attachments %u, vertex bindings %u, per-stage sampled images %u, "
+                "storage buffers %u, samplers %u\n",
+                info.minStorageBufferOffsetAlignment, info.minUniformBufferOffsetAlignment,
+                info.maxColorAttachments, info.maxVertexInputBindings,
+                info.maxPerStageSampledImages, info.maxPerStageStorageBuffers,
+                info.maxPerStageSamplers);
 
     CG_EXPECT_TRUE(info.name[0] != '\0');
     CG_EXPECT_TRUE(info.apiVersion >= vk::kApiVersion13);

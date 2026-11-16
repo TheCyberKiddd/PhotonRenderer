@@ -1,99 +1,127 @@
 # Phase 34 — Vulkan backend
 
-Status: **the Vulkan backend is complete for the RHI as the renderer uses it, with two named gaps.** Every device entry the renderer calls is implemented on Vulkan: resources, views, samplers, SPIR-V shaders, fences, bind groups, pipeline layouts, graphics and compute pipelines, command lists (render passes, draws, indirect draws, dispatches, copies, clears, barriers, push constants, labels), submission, transitions and swapchains. `rhi_backend_gpu_parity` runs one frame of RHI code on D3D12 and on Vulkan and compares the output byte for byte. The gaps are SPIR-V from the shader compiler and the Khronos validation layer, below. [ADR 0029](../adr/0029-vulkan-backend.md) records the decisions.
+Status: **complete on Windows.** Every sample and golden-image test passes on D3D12 and
+Vulkan with the same renderer code, verified on an Intel HD Graphics 530 (Vulkan 1.3):
+190 of 190 CTest tests pass, including a `_vulkan` run of every renderer GPU test, both
+backends' run of every RHI sample, and the backend comparison against the software
+reference. The Vulkan backend compiles the renderer's HLSL itself
+([ADR 0030](../adr/0030-vulkan-hlsl-compiler-and-d3d12-semantics.md)), and
+[ADR 0029](../adr/0029-vulkan-backend.md) records the backend's founding decisions.
+Two named items remain (below): a run with the Khronos validation layer, and the
+Linux and Android window backends that Vulkan surfaces need.
+
+## Running anything on either backend
+
+One binary serves both backends. The backend comes from `--backend=d3d12|vulkan`, then
+the `CYBER_RHI_BACKEND` environment variable, then the program's default
+(`cyber/rhi/backend_select.h`).
+
+- Renderer GPU tests, `rhi_timestamps` and `backend_compare` are registered twice:
+  `<name>` (D3D12) and `<name>_vulkan` (`cyber_add_vulkan_variant` in
+  `cmake/CyberModule.cmake`).
+- RHI samples are registered as `sample_<name>_d3d12` and `sample_<name>_vulkan`
+  (`samples/CMakeLists.txt`). A sample exits with 77 when the machine has no adapter or
+  window system for a backend, which CTest reports as skipped, so a machine without a
+  GPU skips rather than fails.
+- `rhi_backend_gpu_parity` runs one body on both backends in one process and compares
+  the outputs byte for byte.
 
 ## What exists
 
-Everything lives in `engines/cyber_rhi/src/vulkan/`. Each row is covered by a test
-that runs on a real Vulkan 1.3 device and skips cleanly on a machine without one.
+Everything lives in `engines/cyber_rhi/src/vulkan/`.
 
 | Piece | File | Test |
 |---|---|---|
-| API subset: types, enums, function tables (core, then images, commands, sync2, descriptors, pipelines, dynamic rendering, presentation) | `vk_api.h`, `vk_api_ext.h` | every test below creates a device through it |
-| Loader, instance, adapter list, 1.3 feature gate, queue families, logical device, validation messenger, object naming | `vulkan_context.*` | `rhi_vulkan_context` |
-| Memory sub-allocation: blocks per (class, linear, memory type) growing 8 to 256 MiB, first-fit free list with merge, dedicated blocks for large requests, driver allocation cap, persistent mapping, `MemoryStats` | `vulkan_memory.*` | `rhi_vulkan_memory` |
-| Buffers, images, image views, samplers | `vulkan_memory.*` | `rhi_vulkan_memory`, `rhi_vulkan_commands` |
-| Command pool, `vkQueueSubmit2`, timeline semaphore as the RHI fence, immediate submit | `vulkan_commands.*` | `rhi_vulkan_commands` |
-| RHI `ResourceState` to stage, access and layout (barrier translation) | `vulkan_barriers.h` | `rhi_vulkan_commands` (pure logic, no device) |
-| Descriptor set layouts, update-after-bind bindless layout, pools, pipeline layouts with push constants, compute and graphics pipelines (dynamic rendering, no render pass) | `vulkan_pipelines.*` | `rhi_vulkan_pipelines` |
-| SPIR-V module writer with the specification's section order | `spirv_builder.h` | `rhi_vulkan_pipelines` |
-| Win32 surface, FIFO swapchain, acquire and render-finished semaphore rings, recreation | `vulkan_swapchain.*` | `rhi_vulkan_swapchain` |
-| RHI `DeviceInterface`, resource half: buffers, textures, views, samplers, SPIR-V shaders, timeline fences, queues, capabilities, memory stats, object names, leak report | `vulkan_device.*` | `rhi_backend_parity` (one body on D3D12 and Vulkan) |
-| `VulkanBackend()` entry and adapter list | `vulkan_backend.cpp`, `cyber/rhi/vulkan.h` | `rhi_vulkan_context` |
+| API subset: types, enums, function tables | `vk_api.h`, `vk_api_ext.h` | every Vulkan test |
+| Loader, instance, adapters, 1.3 feature gate, optional features, limits, queues, device, validation messenger, naming | `vulkan_context.*` | `rhi_vulkan_context` (prints the optional features and limits) |
+| Memory sub-allocation, raw tile allocations, sparse images | `vulkan_memory.*` | `rhi_vulkan_memory` |
+| Command pool, `vkQueueSubmit2`, timeline fences | `vulkan_commands.*` | `rhi_vulkan_commands` |
+| RHI state to stage, access and layout | `vulkan_barriers.h` | `rhi_vulkan_commands` |
+| Set layouts (update-after-bind arrays), pipeline layouts, pipelines | `vulkan_pipelines.*` | `rhi_vulkan_pipelines` |
+| HLSL to SPIR-V compiler | `hlsl_spirv*.{h,cpp}` | `rhi_hlsl_spirv` (no GPU), and every Vulkan run |
+| Win32 surface, FIFO swapchain | `vulkan_swapchain.*` | `rhi_vulkan_swapchain`, `rhi_backend_gpu_parity` |
+| RHI device, resource half; zero-filled creation | `vulkan_device.cpp` | `rhi_backend_parity` |
+| RHI device, command half; per-pipeline HLSL compilation | `vulkan_device_gpu.cpp` | `rhi_backend_gpu_parity`, renderer `_vulkan` tests |
+| Timestamps, pipeline caches, reserved textures | `vulkan_device_features.cpp` | `rhi_timestamps_vulkan`, `rhi_backend_gpu_parity`, `renderer_gpu_texture_pool_vulkan`, `renderer_gpu_streaming_render_vulkan` |
 
-What the hardware tests prove, on an Intel HD Graphics 530 (Vulkan 1.3):
+## The HLSL compiler
 
-- a 64 KiB buffer and a 64x64 RGBA8 image round-trip bit-exactly through
-  device-local memory with barriers derived from RHI states;
-- a compute shader reads and writes storage buffers through a descriptor set and
-  push constants, with a dispatch that is not a multiple of the workgroup size;
-- a graphics pipeline renders a full-screen triangle with dynamic rendering, and
-  the corner and centre pixels match the barycentric colours;
-- a partially bound, variable-count, update-after-bind sampled-image array is
-  created, allocated and written;
-- a swapchain presents frames, and the first frame's pixels read back as the clear
-  colour;
-- every allocation returns to the starting level after teardown.
+The renderer's shaders are HLSL. D3D12 compiles `ShaderBytecodeFormat::HlslSource` with
+d3dcompiler; Vulkan compiles the same source with the backend's own compiler to SPIR-V
+1.5 (ADR 0030). SPIR-V given directly is still accepted.
+
+- **When it compiles.** `CreateShader` compiles once with a provisional binding layout,
+  so syntax and type errors surface there with `name:line:col`. Each pipeline compiles
+  again against its layout and discards the module once the pipeline exists.
+- **Registers to bindings.** Register space N is bind group slot N. The register of a
+  layout entry is assigned as the D3D12 root signature assigns it: an explicit
+  `shaderRegister`, or the running count of earlier entries in its class (b; t for
+  sampled textures and read-only buffers; u; s). Declarations that land in one
+  binding share one descriptor array. `b0, space0` is the push-constant block when the
+  layout has push constants.
+- **Stage linking.** Vertex outputs are numbered in declaration order and pixel inputs
+  are found by semantic, so a pixel shader may read a subset in any order.
+  Integer varyings are flat. Vertex inputs are `TEXCOORD<n>` at location n, the same
+  rule the D3D12 input layout uses.
+- **Meaning kept from HLSL and D3D12.** HLSL `floatRxC` is a SPIR-V matrix whose columns
+  are the HLSL rows, so `m[i]`, constructors and `mul` need no transposes. cbuffers use
+  16-byte register packing and structured buffers tight packing, as explicit offsets
+  (scalar block layout, required of the device). Float-to-integer conversion saturates with NaN to 0.
+  `SV_Position.w` in a pixel shader is clip w. `SV_InstanceID` starts at 0
+  (InstanceIndex - BaseInstance, which needs shaderDrawParameters; a shader reading it is refused without). Scalar `&&`, `||` and `?:` evaluate only what they
+  need. `precise` becomes `NoContraction`. Shift amounts use their low five bits.
+- **Refusals.** Unsupported constructs (switch, preprocessor macros, geometry stages,
+  resources as parameters, 16/64-bit types, row_major) fail with "not supported by the
+  Vulkan HLSL compiler" and a location. Hostile input is bounded (nesting depth,
+  integer ranges) and fuzzed.
 
 ## The RHI device on Vulkan
 
-`vulkan_device.cpp` holds the resource half and `vulkan_device_gpu.cpp` the command
-half; `vulkan_device_internal.h` is the shared state. Conventions that let renderer
-code written against D3D12 run unchanged:
-
 | RHI concept | Vulkan mapping |
 |---|---|
-| Bind group slot N, entry `binding` B | descriptor set N, binding B; dynamic-offset entries use the `*_BUFFER_DYNAMIC` types; unused slots get an empty set layout so set indices stay contiguous |
-| Push constants | `vkCmdPushConstants` against the pipeline layout of the bound pipeline |
-| Viewport | submitted with a negative height, so clip-space y points up as in D3D12 and front-face winding keeps its D3D12 meaning |
-| Barriers | stage, access and layout derived from the RHI `from` and `to` (`vulkan_barriers.h`); tracked state updated as the barrier is recorded |
-| Render pass | `vkCmdBeginRendering`; pipelines name their attachment formats, there are no render pass objects |
-| `ClearColorTexture` and `ClearDepthStencilTexture` | a one-subresource render pass with a clear load op, valid in the same `RenderTarget` and `DepthWrite` states D3D12 clears in; the transient views live until the list is reset |
-| Back buffers | start in `Present` (the images are moved there once at creation); acquire gates the graphics queue on the image, present waits for every earlier graphics submit through an internal timeline, so callers never see a binary semaphore |
-| Cross-queue resources | created `CONCURRENT` across the distinct queue families, so no ownership transfers |
-| Fences | timeline semaphores; a timed-out wait reports `NotFound`, as D3D12 does |
-| Limits | image sizes and push-constant size are read from the device; the rest are the specification's guaranteed minimums |
+| Bind group slot N, entry `binding` B | descriptor set N, binding B; unused slots get an empty set layout |
+| Binding array | update-after-bind and partially bound, from update-after-bind pools (bindless); a layout with dynamic-offset buffers keeps ordinary bindings |
+| Push constants | `vkCmdPushConstants`; HLSL `b0, space0` |
+| Viewport | negative height, so clip-space y and winding keep their D3D12 meaning |
+| Barriers | derived from the RHI `from` and `to` states |
+| Render pass | dynamic rendering |
+| Back buffers | start in `Present`; acquire and present hide the binary semaphores |
+| New resources | zero-filled (clear or fill in one batch ahead of the next submission), as D3D12 committed resources start zeroed |
+| Out-of-range shader access | reads zero, writes dropped (`robustBufferAccess`, `robustImageAccess`) |
+| Fences | timeline semaphores; each queue kind also signals an internal timeline that orders sparse binds |
+| Timestamps | query pool plus a mapped readback buffer; resolve copies, then resets the queries |
+| Pipeline caches | `VkPipelineCache`; foreign or stale bytes give an empty cache |
+| Reserved textures | sparse-resident images in the standard 64 KiB block shape; tile heaps are raw allocations; `UpdateTileMappings` is `vkQueueBindSparse` ordered on its queue |
+| Wireframe, depth clip off | `fillModeNonSolid`, `depthClamp` |
+| Limits | read from the device (offset alignments, attachments, vertex bindings, descriptor-indexing array limits) |
 
-## What the cross-backend tests prove
+## What the cross-backend tests prove (HD Graphics 530)
 
-`rhi_backend_gpu_parity` records RHI code once and runs it on every compiled-in
-hardware backend, with only the shader bytes differing (HLSL for D3D12, SPIR-V from
-`SpirvBuilder` for Vulkan):
+- One HLSL compute shader through a bind group and push constants gives the same 1000
+  words on D3D12 and Vulkan; one HLSL triangle gives the same picture.
+- Both backends present swapchain frames (the D3D12 swapchain now creates its buffers in
+  the linear twin of an sRGB format, as flip-model swapchains require).
+- Pipeline-cache bytes round-trip on both backends; timestamps resolve and reuse.
+- GPU culling of a million instances matches the CPU reference exactly on Vulkan (0
+  disagreements), as does Hi-Z occlusion; virtual-texture sampling and feedback match
+  the CPU sampler; BC6H decodes match the hardware decoder; reserved-texture streaming
+  reads 92 160 samples with none wrong.
+- The clustered-lighting sample's GPU PBR matches the CPU (max error 0) on Vulkan;
+  every other RHI sample runs on both backends.
+- `backend_compare`'s triangle and textured cube match the software reference on
+  Vulkan (0 pixels over tolerance).
 
-- a compute dispatch through a bind group of two storage buffers and push constants
-  produces the same 1000 words on D3D12 and Vulkan;
-- a graphics pass (pipeline layout, pipeline, render pass, viewport, scissor, vertex
-  buffer, draw, texture-to-buffer copy) produces the same picture on both within
-  interpolation rounding, and the corner and centre pixels match the expected
-  barycentric colours;
-- a swapchain acquires and presents frames (Vulkan; the D3D12 swapchain is created
-  against a hidden window in this test and the D3D12 backend declines it, so that half
-  is skipped on D3D12 and covered by the D3D12 swapchain tests);
-- no object leaks after teardown on either backend.
+## Still open
 
-`rhi_backend_parity` covers the resource contract (host access rules, labels, stale
-handles, fence semantics) identically on both.
-
-## What does not exist yet
-
-1. **SPIR-V from the shader compiler.** The one external dependency left. The Vulkan
-   device accepts SPIR-V (`ShaderBytecodeFormat::SpirV`) and `spirv_builder.h` writes
-   it, but the compiler (ADR 0019) lowers HLSL to DXBC/DXIL only, so the renderer's own
-   shaders cannot run on Vulkan until a SPIR-V producer exists. The Windows SDK's
-   `dxc.exe` and `dxcompiler.dll` on the development machine were built without SPIR-V
-   code generation ("SPIR-V CodeGen not available"). Closing the gap needs either a
-   DXC build with SPIR-V enabled (it compiles the same HLSL with `-spirv`, and the
-   binding convention above maps to `-fvk-b-shift`, `-fvk-t-shift` and friends per
-   register space), or a SPIR-V back end in the project's own compiler over its IR.
-   Either way the device side is ready.
-2. **Validation.** The Khronos validation layer is not installed on the test machine,
-   so every "zero validation errors" assertion is vacuous here. The code enables the
-   layer with synchronization validation when present and the tests require it when
-   installed; the first run on a machine with it is still owed.
-3. **Timestamp queries, pipeline caches and reserved textures** answer `Unsupported`
-   on Vulkan (the capability report omits them).
-4. **Linux and Android surfaces** with their window backends.
-5. **Every sample and golden-image test on both backends** needs item 1.
+1. **A run with the Khronos validation layer.** The layer is not installed on the
+   development machine, so the "zero validation errors" checks pass vacuously here. The
+   code enables it with synchronization validation when present and tests require it
+   then. One run on a machine with the layer is owed.
+2. **Linux and Android surfaces.** `cyber_platform` has no Linux or Android window
+   backend yet, so there is no window to make a Vulkan surface for. Without one, the
+   instance is created headless and swapchain creation answers `Unsupported` by name;
+   everything else (compute, offscreen rendering, every test that needs no window)
+   builds and runs on Linux. The Linux build was reviewed by reading, not compiled.
 
 ## Behaviour differences to keep in view
 
@@ -107,9 +135,19 @@ handles, fence semantics) identically on both.
 | Barriers | resource states | stage, access and layout derived from the one state |
 | Naming views and samplers | not nameable (descriptors) | nameable, labels read back |
 | Missing GPU or driver | WARP always exists | zero adapters |
-| Shaders | HLSL source or DXIL | SPIR-V only |
+| Shaders | HLSL compiled at `CreateShader` | HLSL checked at `CreateShader`, compiled per pipeline; or SPIR-V |
+| Storage-buffer offset alignment | 4 bytes | the device's (64 on the HD 530) |
+| Ordinary per-stage descriptor limit | descriptor tables | 200 on the HD 530, so arrays are update-after-bind |
+| Storage images read without a format | typed UAV loads | needs `shaderStorageImageReadWithoutFormat` (absent on the HD 530; writes work) |
+| Unmapped reserved tiles | read zero (tier 2) | read zero when the device has sparse aliasing (they alias one zeroed tile), otherwise unbound |
 
-## Performance note
+## Lessons the HD 530 taught
 
-Creating a Vulkan instance on the Intel HD Graphics 530 driver costs about 300 ms,
-so adapter enumeration is a startup cost, not a per-frame one.
+- Creating a Vulkan instance costs about 300 ms on this driver; adapter enumeration is a
+  startup cost.
+- The driver's DLL initialisation runs inside the first instance creation on the
+  caller's stack. A sample whose `main` kept 120 KB of arrays on the 1 MiB main-thread
+  stack made it fail with error 1114 and reported zero adapters; the arrays are static.
+- An image placed in memory freed by another image inherited stale compression
+  metadata and hung the GPU when unwritten texels were sampled. Zero-filled creation
+  fixed it, and is what D3D12 guarantees anyway.

@@ -6,6 +6,8 @@
 // tile, the evictions and refinements that happen between frames never corrupt
 // a sample, and the streaming work stays inside a frame budget.
 
+#include "test_backend.h"
+
 #include <cyber/core/log.h>
 #include <cyber/core/log_sinks.h>
 #include <cyber/memory/heap_allocator.h>
@@ -169,7 +171,7 @@ CG_TEST(gpu_streamed_textures_render_correctly_under_a_small_budget_on_d3d12)
     LogGuard logGuard;
     // Progress lines must survive an abnormal exit of a driver or debug layer.
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    const rhi::Backend* backend = rhi::D3D12Backend();
+    const rhi::Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr)
     {
         CG_SKIP("no Direct3D 12 runtime");

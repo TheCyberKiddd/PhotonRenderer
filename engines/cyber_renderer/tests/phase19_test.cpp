@@ -1,3 +1,5 @@
+#include "test_backend.h"
+
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/memory/span.h>
 #include <cyber/renderer/bindless_table.h>
@@ -90,7 +92,7 @@ struct Fixture
 
     [[nodiscard]] bool OpenD3D12() noexcept
     {
-        const cyber::rhi::Backend* backend = cyber::rhi::D3D12Backend();
+        const cyber::rhi::Backend* backend = cyber::rhi::test::TestBackend();
         if (backend == nullptr)
         {
             return false;
@@ -304,9 +306,14 @@ CG_TEST(renderer_phase19_bindless_table_d3d12)
     auto view = fixture.device.CreateTextureView(viewDesc);
     CG_REQUIRE(static_cast<bool>(view));
 
+    // Buffer ranges start on the API's storage-buffer offset alignment: 16 bytes
+    // satisfies D3D12 (4), a Vulkan device asks for its own (often 64).
+    const u64 align = fixture.device.Capabilities().limits.minStorageBufferOffsetAlignment > 16
+                          ? fixture.device.Capabilities().limits.minStorageBufferOffsetAlignment
+                          : 16;
     cyber::rhi::BufferDesc bufferDesc{};
     bufferDesc.usage = cyber::rhi::BufferUsage::Storage;
-    bufferDesc.sizeBytes = 256;
+    bufferDesc.sizeBytes = align * 4;
     bufferDesc.elementStride = 16;
     auto buffer = fixture.device.CreateBuffer(bufferDesc);
     CG_REQUIRE(static_cast<bool>(buffer));
@@ -327,7 +334,7 @@ CG_TEST(renderer_phase19_bindless_table_d3d12)
 
     auto textureIndex = table.AllocateTexture(view.Value());
     auto invalidBufferIndex = table.AllocateBuffer(buffer.Value(), 4, 16);
-    auto bufferIndex = table.AllocateBuffer(buffer.Value(), 16, 32);
+    auto bufferIndex = table.AllocateBuffer(buffer.Value(), align, 32);
     CG_REQUIRE(static_cast<bool>(textureIndex));
     CG_EXPECT_FALSE(invalidBufferIndex);
     CG_REQUIRE(static_cast<bool>(bufferIndex));
@@ -347,7 +354,7 @@ CG_TEST(renderer_phase19_bindless_table_d3d12)
     CG_EXPECT_TRUE(fixture.device.BindGroupInfoOf(table.Group(0)).valid);
 
     CG_REQUIRE(table.UpdateTexture(textureIndex.Value(), view.Value()).IsOk());
-    CG_REQUIRE(table.UpdateBuffer(bufferIndex.Value(), buffer.Value(), 32, 32).IsOk());
+    CG_REQUIRE(table.UpdateBuffer(bufferIndex.Value(), buffer.Value(), align * 2, 32).IsOk());
     CG_REQUIRE(table.SyncFrame(fixture.ring, frame0.Value()).IsOk());
     CG_REQUIRE(table.FreeTexture(textureIndex.Value()).IsOk());
     CG_REQUIRE(table.FreeBuffer(bufferIndex.Value()).IsOk());

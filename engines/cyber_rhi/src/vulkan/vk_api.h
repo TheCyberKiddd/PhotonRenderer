@@ -292,25 +292,86 @@ struct PhysicalDeviceFeatures2
 // header. Indices below are the position of each member in the specification's
 // declaration order; the array form keeps the layout exact without declaring
 // forty-odd members the backend never names.
+inline constexpr u32 kVulkan11FeatureCount = 12;
 inline constexpr u32 kVulkan12FeatureCount = 47;
 inline constexpr u32 kVulkan13FeatureCount = 15;
+
+// `VkPhysicalDeviceFeatures` member positions the backend enables when present.
+namespace Feature10
+{
+inline constexpr u32 kRobustBufferAccess = 0;
+inline constexpr u32 kImageCubeArray = 2;
+inline constexpr u32 kIndependentBlend = 3;
+inline constexpr u32 kMultiDrawIndirect = 9;
+inline constexpr u32 kDrawIndirectFirstInstance = 10;
+inline constexpr u32 kDepthClamp = 11;
+inline constexpr u32 kDepthBiasClamp = 12;
+inline constexpr u32 kFillModeNonSolid = 13;
+inline constexpr u32 kSamplerAnisotropy = 19;
+inline constexpr u32 kTextureCompressionBc = 22;
+inline constexpr u32 kVertexPipelineStoresAndAtomics = 25;
+inline constexpr u32 kFragmentStoresAndAtomics = 26;
+inline constexpr u32 kShaderImageGatherExtended = 28;
+inline constexpr u32 kShaderStorageImageExtendedFormats = 29;
+inline constexpr u32 kShaderStorageImageReadWithoutFormat = 31;
+inline constexpr u32 kShaderStorageImageWriteWithoutFormat = 32;
+inline constexpr u32 kShaderUniformBufferArrayDynamicIndexing = 33;
+inline constexpr u32 kShaderSampledImageArrayDynamicIndexing = 34;
+inline constexpr u32 kShaderStorageBufferArrayDynamicIndexing = 35;
+inline constexpr u32 kShaderStorageImageArrayDynamicIndexing = 36;
+inline constexpr u32 kShaderResourceResidency = 42;
+inline constexpr u32 kShaderResourceMinLod = 43;
+inline constexpr u32 kSparseBinding = 44;
+inline constexpr u32 kSparseResidencyImage2D = 46;
+inline constexpr u32 kSparseResidencyAliased = 52;
+}  // namespace Feature10
+
+namespace Feature11
+{
+inline constexpr u32 kShaderDrawParameters = 11;
+}  // namespace Feature11
 
 namespace Feature12
 {
 inline constexpr u32 kDrawIndirectCount = 1;
 inline constexpr u32 kDescriptorIndexing = 9;
+inline constexpr u32 kShaderUniformBufferArrayNonUniformIndexing = 13;
 inline constexpr u32 kShaderSampledImageArrayNonUniformIndexing = 14;
 inline constexpr u32 kShaderStorageBufferArrayNonUniformIndexing = 15;
+inline constexpr u32 kShaderStorageImageArrayNonUniformIndexing = 16;
+inline constexpr u32 kDescriptorBindingUniformBufferUpdateAfterBind = 20;
 inline constexpr u32 kDescriptorBindingSampledImageUpdateAfterBind = 21;
+inline constexpr u32 kDescriptorBindingStorageImageUpdateAfterBind = 22;
+inline constexpr u32 kDescriptorBindingStorageBufferUpdateAfterBind = 23;
+inline constexpr u32 kDescriptorBindingUpdateUnusedWhilePending = 26;
 inline constexpr u32 kDescriptorBindingPartiallyBound = 27;
 inline constexpr u32 kDescriptorBindingVariableDescriptorCount = 28;
 inline constexpr u32 kRuntimeDescriptorArray = 29;
+inline constexpr u32 kScalarBlockLayout = 31;
+inline constexpr u32 kUniformBufferStandardLayout = 33;
+inline constexpr u32 kHostQueryReset = 36;
 inline constexpr u32 kTimelineSemaphore = 37;
 inline constexpr u32 kBufferDeviceAddress = 38;
 }  // namespace Feature12
 
+struct PhysicalDeviceVulkan11Features
+{
+    StructureType sType = StructureType::PhysicalDeviceVulkan11Features;
+    void* pNext = nullptr;
+    Bool32 flags[kVulkan11FeatureCount]{};
+};
+
+// Byte offsets inside `PhysicalDeviceProperties::limitsAndSparseProperties`
+// (the `VkPhysicalDeviceLimits` structure, then `VkPhysicalDeviceSparseProperties`
+// at 504), for the members the backend reads.
+inline constexpr u32 kLimitTimestampComputeAndGraphics = 420;
+inline constexpr u32 kLimitTimestampPeriod = 424;
+inline constexpr u32 kSparseResidencyStandard2DBlockShape = 504;
+inline constexpr u32 kSparseResidencyNonResidentStrict = 520;
+
 namespace Feature13
 {
+inline constexpr u32 kRobustImageAccess = 0;
 inline constexpr u32 kSynchronization2 = 9;
 inline constexpr u32 kDynamicRendering = 12;
 }  // namespace Feature13
@@ -486,6 +547,27 @@ using PFN_GetPhysicalDeviceMemoryProperties = void(CYBER_VKAPI*)(PhysicalDevice,
 using PFN_GetPhysicalDeviceQueueFamilyProperties = void(CYBER_VKAPI*)(PhysicalDevice, u32*,
                                                                       QueueFamilyProperties*);
 using PFN_GetPhysicalDeviceFeatures2 = void(CYBER_VKAPI*)(PhysicalDevice, PhysicalDeviceFeatures2*);
+// `VkPhysicalDeviceDescriptorIndexingProperties`: one u32 then seven VkBool32
+// flags, then the update-after-bind limits, all 32-bit (indices below).
+struct PhysicalDeviceDescriptorIndexingProperties
+{
+    StructureType sType = static_cast<StructureType>(1000161002);
+    void* pNext = nullptr;
+    u32 values[23]{};
+};
+inline constexpr u32 kUabPerStageSamplers = 8;
+inline constexpr u32 kUabPerStageUniformBuffers = 9;
+inline constexpr u32 kUabPerStageStorageBuffers = 10;
+inline constexpr u32 kUabPerStageSampledImages = 11;
+inline constexpr u32 kUabPerStageStorageImages = 12;
+struct PhysicalDeviceProperties2
+{
+    StructureType sType = static_cast<StructureType>(1000059001);
+    void* pNext = nullptr;
+    PhysicalDeviceProperties properties{};
+};
+using PFN_GetPhysicalDeviceProperties2 = void(CYBER_VKAPI*)(PhysicalDevice,
+                                                            PhysicalDeviceProperties2*);
 using PFN_EnumerateDeviceExtensionProperties = Result(CYBER_VKAPI*)(PhysicalDevice, const char*,
                                                                     u32*, ExtensionProperties*);
 using PFN_CreateDevice = Result(CYBER_VKAPI*)(PhysicalDevice, const DeviceCreateInfo*, const void*,
@@ -530,6 +612,7 @@ struct InstanceApi
     PFN_GetPhysicalDeviceMemoryProperties getPhysicalDeviceMemoryProperties = nullptr;
     PFN_GetPhysicalDeviceQueueFamilyProperties getPhysicalDeviceQueueFamilyProperties = nullptr;
     PFN_GetPhysicalDeviceFeatures2 getPhysicalDeviceFeatures2 = nullptr;
+    PFN_GetPhysicalDeviceProperties2 getPhysicalDeviceProperties2 = nullptr;
     PFN_EnumerateDeviceExtensionProperties enumerateDeviceExtensionProperties = nullptr;
     PFN_CreateDevice createDevice = nullptr;
     PFN_GetDeviceProcAddr getDeviceProcAddr = nullptr;

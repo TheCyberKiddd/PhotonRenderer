@@ -6,6 +6,8 @@
 // back to coarser ancestors) and once they are resident. The Null backend
 // checks what `Sync` uploads and when.
 
+#include "test_backend.h"
+
 #include <cyber/core/log.h>
 #include <cyber/core/log_sinks.h>
 #include <cyber/memory/heap_allocator.h>
@@ -527,7 +529,7 @@ CG_TEST(gpu_virtual_texture_syncs_only_what_changed)
 CG_TEST(gpu_virtual_texture_shader_matches_cpu_sample_on_d3d12)
 {
     LogGuard logGuard;
-    const rhi::Backend* backend = rhi::D3D12Backend();
+    const rhi::Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr)
     {
         CG_SKIP("no Direct3D 12 runtime");

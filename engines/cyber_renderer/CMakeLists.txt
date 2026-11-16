@@ -198,4 +198,25 @@ if(CYBER_BUILD_TESTS)
     set_tests_properties(renderer_texture_streaming PROPERTIES TIMEOUT 60)
     set_tests_properties(renderer_gpu_texture_pool PROPERTIES TIMEOUT 120)
     set_tests_properties(renderer_virtual_texture PROPERTIES TIMEOUT 120)
+    # The GPU-timing test measures CPU cost against object count; other GPU work
+    # running beside it on a four-core machine distorts the ratio it checks.
+    set_tests_properties(renderer_gpu_driven_d3d12 PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
+    # The streaming tests rely on IO threads and a wall-clock frame-time bound
+    # (p99); other GPU tests beside them on a four-core machine starve both.
+    set_tests_properties(renderer_gpu_streaming_render PROPERTIES RUN_SERIAL TRUE)
+    set_tests_properties(renderer_gpu_texture_pool PROPERTIES RUN_SERIAL TRUE)
 endif()
+
+# Phase 34: every GPU test again on Vulkan, same binary, same assertions.
+foreach(gpu_test IN ITEMS
+        renderer_phase19
+        renderer_shadow_pass
+        renderer_raytracing_path
+        renderer_gpu_driven_d3d12
+        renderer_gpu_texture_pool
+        renderer_gpu_virtual_texture
+        renderer_bc6h_hardware
+        renderer_gpu_virtual_texture_feedback
+        renderer_gpu_streaming_render)
+    cyber_add_vulkan_variant(${gpu_test})
+endforeach()

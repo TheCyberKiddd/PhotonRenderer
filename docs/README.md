@@ -47,6 +47,7 @@ a phase actually works.
 | [reports/phase-30.md](reports/phase-30.md) | Phase 30 implementation and validation evidence. |
 | [adr/0028-gi-approach.md](adr/0028-gi-approach.md) | Phase 31 choice of baked irradiance volumes, and the ray-tracing capability gate. |
 | [adr/0029-vulkan-backend.md](adr/0029-vulkan-backend.md) | Phase 34 choice of own Vulkan declarations loaded at run time, the 1.3-core requirement, and the increment plan. |
+| [adr/0030-vulkan-hlsl-compiler-and-d3d12-semantics.md](adr/0030-vulkan-hlsl-compiler-and-d3d12-semantics.md) | Phase 34: the Vulkan backend compiles the renderer's HLSL itself, and keeps D3D12's defined behaviour (robust access, zeroed resources, saturating conversions). |
 | [design/phase-34-vulkan.md](design/phase-34-vulkan.md) | Phase 34 status, what remains, and D3D12/Vulkan behaviour differences. |
 | [design/phase-31-gi-raytracing.md](design/phase-31-gi-raytracing.md) | Phase 31 ray tracer, irradiance volume, denoiser, and how GI accuracy and leakage are measured. |
 | [reports/phase-31.md](reports/phase-31.md) | Phase 31 implementation and validation evidence. |

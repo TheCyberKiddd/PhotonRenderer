@@ -8,6 +8,8 @@
 // every Direct3D 12 adapter with tiled resources the data is read back from
 // the GPU and compared byte for byte, before and after evictions.
 
+#include "test_backend.h"
+
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/renderer/gpu_texture_pool.h>
 #include <cyber/renderer/texture_streaming.h>
@@ -239,7 +241,24 @@ CG_TEST(gpu_texture_pool_keeps_tile_mappings_equal_to_residency)
         // reads in flight are not mapped until their upload.
         const StreamingStats& stats = streamer.Stats();
         violations += mapped == stats.usedPages - stats.reservedPages ? 0u : 1u;
-        std::this_thread::yield();
+        // Real IO threads feed the streamer; pacing the frames lets them keep up on
+        // a loaded machine instead of the run finishing before the reads land.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    // The reversed phase ends with the last texture wanted most; give the IO
+    // threads time to finish it rather than asserting on a fixed frame count.
+    for (u32 extra = 0; extra < 2000 && streamer.ResidentLevel(handles[5]) != 0u; ++extra)
+    {
+        std::vector<float> coverage;
+        for (u32 i = 0; i < 6; ++i)
+        {
+            coverage.push_back(0.05f * static_cast<float>(i + 1));
+        }
+        RunFrame(streamer, pool, handles, std::vector<float>(6, 0.0f), coverage);
+        violations += CheckMappings(device, pool, streamer, handles, mapped);
+        const StreamingStats& stats = streamer.Stats();
+        violations += mapped == stats.usedPages - stats.reservedPages ? 0u : 1u;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     streamer.Flush(pool);
     (void)pool.EndFrame();
@@ -264,7 +283,7 @@ CG_TEST(gpu_texture_pool_keeps_tile_mappings_equal_to_residency)
 
 CG_TEST(gpu_texture_pool_streams_correct_bytes_on_d3d12)
 {
-    const rhi::Backend* backend = rhi::D3D12Backend();
+    const rhi::Backend* backend = cyber::rhi::test::TestBackend();
     if (backend == nullptr)
     {
         CG_SKIP("no Direct3D 12 runtime");

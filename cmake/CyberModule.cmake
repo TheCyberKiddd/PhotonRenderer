@@ -141,3 +141,24 @@ function(cyber_add_test)
 
     add_test(NAME ${ARG_NAME} COMMAND ${target})
 endfunction()
+
+# Registers a second run of an existing test, `<name>_vulkan`, with the RHI backend
+# switched to Vulkan through CYBER_RHI_BACKEND (cyber/rhi/backend_select.h). The
+# binary and every assertion are the same; only the backend differs, which is the
+# Phase 34 done line. Without the Vulkan backend there is nothing to register. The
+# test's timeout and labels are copied so both runs are bounded alike.
+function(cyber_add_vulkan_variant name)
+    if(NOT CYBER_BUILD_TESTS OR NOT CYBER_RHI_ENABLE_VULKAN OR NOT TEST ${name})
+        return()
+    endif()
+    add_test(NAME ${name}_vulkan COMMAND cyber_test_${name})
+    set_tests_properties(${name}_vulkan PROPERTIES ENVIRONMENT "CYBER_RHI_BACKEND=vulkan")
+    get_test_property(${name} TIMEOUT timeout)
+    if(timeout)
+        set_tests_properties(${name}_vulkan PROPERTIES TIMEOUT ${timeout})
+    endif()
+    get_test_property(${name} RUN_SERIAL serial)
+    if(serial)
+        set_tests_properties(${name}_vulkan PROPERTIES RUN_SERIAL ${serial})
+    endif()
+endfunction()

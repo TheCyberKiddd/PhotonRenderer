@@ -258,6 +258,10 @@ Status<Error> VkCreateBuffer(void* internal, const BufferDesc& desc, BufferHandl
     native.memoryClass =
         hostVisible ? VulkanMemoryClass::Upload
                     : (readback ? VulkanMemoryClass::Readback : VulkanMemoryClass::DeviceLocal);
+    if (native.memoryClass == VulkanMemoryClass::DeviceLocal)
+    {
+        native.usage |= vk::BufferUsage::kTransferDst;  // zeroed at creation
+    }
     BufferSlot& slot = device.buffers.At(index);
     const Status<Error> created = device.memory.CreateBuffer(native, &slot.buffer);
     if (!created)
@@ -266,6 +270,7 @@ Status<Error> VkCreateBuffer(void* internal, const BufferDesc& desc, BufferHandl
         return created;
     }
     slot.desc = desc;
+    RecordBufferInit(device, slot);
     slot.state = hostVisible
                      ? kGenericRead
                      : (readback ? ResourceState::CopyDestination : ResourceState::Undefined);
@@ -286,6 +291,11 @@ Status<Error> VkDestroyBuffer(void* internal, BufferHandle handle) noexcept
     if (slot == nullptr)
     {
         return Err(ErrorCode::InvalidArgument, "vulkan backend: buffer handle is stale or invalid");
+    }
+    if (device.initCommands != nullptr)
+    {
+        // The pending initialisation batch may name this buffer.
+        (void)FlushResourceInitAndWait(device);
     }
     device.memory.DestroyBuffer(slot->buffer);
     device.buffers.Release(handle.index);
@@ -380,11 +390,6 @@ Status<Error> VkCreateTexture(void* internal, const TextureDesc& desc, TextureHa
         return Err(ErrorCode::InvalidArgument,
                    "vulkan backend: texture creation needs a device and an output handle");
     }
-    if (desc.reserved)
-    {
-        return Err(ErrorCode::Unsupported,
-                   "vulkan backend: reserved (sparse) textures are not implemented yet");
-    }
     if (desc.width == 0 || desc.height == 0 || desc.depth == 0 || desc.arrayLayers == 0 ||
         desc.mipLevels == 0 || desc.usage == TextureUsage::None)
     {
@@ -453,6 +458,13 @@ Status<Error> VkCreateTexture(void* internal, const TextureDesc& desc, TextureHa
     {
         native.usage |= vk::ImageUsage::kTransferDst;
     }
+    // Every image can be a transfer destination: creation clears it to zero
+    // (RecordTextureInit), as D3D12 committed resources start zeroed. Reserved
+    // images have no memory to clear; their unmapped tiles read as zero instead.
+    if (!IsBlockCompressed(desc.format) && !desc.reserved)
+    {
+        native.usage |= vk::ImageUsage::kTransferDst;
+    }
     native.samples = desc.sampleCount;
     native.cubeCompatible = desc.dimension == TextureDimension::Cube;
 
@@ -463,15 +475,33 @@ Status<Error> VkCreateTexture(void* internal, const TextureDesc& desc, TextureHa
         return Err(ErrorCode::Internal, "vulkan backend: texture table could not grow");
     }
     TextureSlot& slot = device.textures.At(index);
-    const Status<Error> created = device.memory.CreateImage(native, &slot.image);
+    const Status<Error> created = desc.reserved ? CreateReservedImage(device, desc, native, slot)
+                                                : device.memory.CreateImage(native, &slot.image);
     if (!created)
     {
         device.textures.Release(index);
         return created;
     }
     slot.desc = desc;
-    slot.sizeBytes = slot.image.block.sizeBytes;
-    *out = device.textures.HandleOf<TextureTag>(index);
+    const TextureHandle handle = device.textures.HandleOf<TextureTag>(index);
+    if (desc.reserved)
+    {
+        const Status<Error> aliased = AliasUnmappedTiles(device, handle);
+        if (!aliased)
+        {
+            device.memory.DestroyImage(slot.image);
+            device.allocator->Deallocate(slot.tiles);
+            slot.tiles = nullptr;
+            device.textures.Release(index);
+            return aliased;
+        }
+    }
+    else
+    {
+        slot.sizeBytes = slot.image.block.sizeBytes;
+        RecordTextureInit(device, slot);
+    }
+    *out = handle;
     return Status<Error>::Ok();
 }
 
@@ -489,6 +519,18 @@ Status<Error> VkDestroyTexture(void* internal, TextureHandle handle) noexcept
     {
         return Err(ErrorCode::InvalidArgument,
                    "vulkan backend: a swapchain image is destroyed with its swapchain");
+    }
+    if (device.initCommands != nullptr)
+    {
+        // The pending initialisation batch may name this image.
+        (void)FlushResourceInitAndWait(device);
+    }
+    if (slot->reserved)
+    {
+        // Sparse binds are queue operations naming the image; they must have run.
+        (void)WaitForTileBinds(device);
+        device.allocator->Deallocate(slot->tiles);
+        slot->tiles = nullptr;
     }
     device.memory.DestroyImage(slot->image);
     device.textures.Release(handle.index);
@@ -777,6 +819,92 @@ Status<Error> VkDestroySampler(void* internal, SamplerHandle handle) noexcept
 
 // ---- Shaders ---------------------------------------------------------------
 
+void CopyEntry(ShaderSlot& slot, const char* entryPoint) noexcept
+{
+    const char* entryName = entryPoint != nullptr ? entryPoint : "main";
+    u32 length = 0;
+    while (length + 1 < sizeof(slot.entry) && entryName[length] != 0)
+    {
+        slot.entry[length] = entryName[length];
+        ++length;
+    }
+    slot.entry[length] = 0;
+}
+
+// HLSL is checked now, so a syntax or type error surfaces at creation as it does
+// on D3D12, and compiled again for each pipeline once its layout is known.
+Status<Error> CreateHlslShader(void* internal, const ShaderDesc& desc, ShaderHandle* out) noexcept
+{
+    if (desc.code.Size() == 0 || desc.code.Data() == nullptr)
+    {
+        return Err(ErrorCode::InvalidArgument, "vulkan backend: shader source is empty");
+    }
+    if (desc.stage != ShaderStage::Vertex && desc.stage != ShaderStage::Pixel &&
+        desc.stage != ShaderStage::Compute)
+    {
+        return Err(ErrorCode::InvalidArgument, "vulkan backend: unknown shader stage");
+    }
+    if (desc.entryPoint != nullptr && std::strlen(desc.entryPoint) >= sizeof(ShaderSlot{}.entry))
+    {
+        return Err(ErrorCode::InvalidArgument, "vulkan backend: entry point name is too long");
+    }
+    VulkanRhiDevice& device = Self(internal);
+    usize length = desc.code.Size();
+    const char* text = reinterpret_cast<const char*>(desc.code.Data());
+    // Source may or may not carry its terminator; stop at the first NUL as
+    // D3DCompile does.
+    for (usize index = 0; index < length; ++index)
+    {
+        if (text[index] == 0)
+        {
+            length = index;
+            break;
+        }
+    }
+    {
+        hlsl::CompileOutput check(*device.allocator);
+        hlsl::CompileDesc compile{};
+        compile.source = text;
+        compile.sourceBytes = length;
+        compile.entryPoint = desc.entryPoint != nullptr ? desc.entryPoint : "main";
+        compile.stage = desc.stage;
+        compile.sourceName = desc.label;
+        compile.features = device.shaderFeatures;
+        const Status<Error> compiled = hlsl::Compile(compile, *device.allocator, &check);
+        if (!compiled)
+        {
+            // The diagnostic lives in `check`; keep a copy that outlives it.
+            return Err(compiled.Error().code, KeepShaderDiagnostic(compiled.Error().message));
+        }
+    }
+    char* source = static_cast<char*>(device.allocator->Allocate(length + 1, 1));
+    if (source == nullptr)
+    {
+        return Err(ErrorCode::Internal, "vulkan backend: shader source copy failed");
+    }
+    std::memcpy(source, text, length);
+    source[length] = 0;
+
+    const std::lock_guard<std::mutex> lock(device.mutex);
+    u32 index = 0;
+    if (!device.shaders.Acquire(&index))
+    {
+        device.allocator->Deallocate(source);
+        return Err(ErrorCode::Internal, "vulkan backend: shader table could not grow");
+    }
+    ShaderSlot& slot = device.shaders.At(index);
+    slot.module = 0;
+    slot.format = ShaderBytecodeFormat::HlslSource;
+    slot.source = source;
+    slot.sourceBytes = length;
+    slot.stage = desc.stage;
+    slot.codeSize = desc.code.Size();
+    CopyEntry(slot, desc.entryPoint);
+    CopyLabel(slot.name, desc.label);
+    *out = device.shaders.HandleOf<ShaderTag>(index);
+    return Status<Error>::Ok();
+}
+
 Status<Error> VkCreateShader(void* internal, const ShaderDesc& desc, ShaderHandle* out) noexcept
 {
     if (internal == nullptr || out == nullptr)
@@ -784,11 +912,13 @@ Status<Error> VkCreateShader(void* internal, const ShaderDesc& desc, ShaderHandl
         return Err(ErrorCode::InvalidArgument,
                    "vulkan backend: shader creation needs a device and an output handle");
     }
+    if (desc.format == ShaderBytecodeFormat::HlslSource)
+    {
+        return CreateHlslShader(internal, desc, out);
+    }
     if (desc.format != ShaderBytecodeFormat::SpirV)
     {
-        return Err(
-            ErrorCode::Unsupported,
-            "vulkan backend: shaders must be SPIR-V; the shader compiler has no SPIR-V output yet");
+        return Err(ErrorCode::Unsupported, "vulkan backend: shaders must be HLSL source or SPIR-V");
     }
     if (desc.code.Size() < 20 || desc.code.Size() % 4 != 0)
     {
@@ -820,16 +950,10 @@ Status<Error> VkCreateShader(void* internal, const ShaderDesc& desc, ShaderHandl
     }
     slot.stage = desc.stage;
     slot.codeSize = desc.code.Size();
-    {
-        const char* entryName = desc.entryPoint != nullptr ? desc.entryPoint : "main";
-        u32 length = 0;
-        while (length + 1 < sizeof(slot.entry) && entryName[length] != 0)
-        {
-            slot.entry[length] = entryName[length];
-            ++length;
-        }
-        slot.entry[length] = 0;
-    }
+    slot.format = ShaderBytecodeFormat::SpirV;
+    slot.source = nullptr;
+    slot.sourceBytes = 0;
+    CopyEntry(slot, desc.entryPoint);
     CopyLabel(slot.name, desc.label);
     if (desc.label != nullptr)
     {
@@ -848,7 +972,16 @@ Status<Error> VkDestroyShader(void* internal, ShaderHandle handle) noexcept
     {
         return Err(ErrorCode::InvalidArgument, "vulkan backend: shader handle is stale or invalid");
     }
-    device.pipelines.DestroyShader(slot->module);
+    if (slot->module != 0)
+    {
+        device.pipelines.DestroyShader(slot->module);
+        slot->module = 0;
+    }
+    if (slot->source != nullptr)
+    {
+        device.allocator->Deallocate(slot->source);
+        slot->source = nullptr;
+    }
     device.shaders.Release(handle.index);
     return Status<Error>::Ok();
 }
@@ -862,7 +995,7 @@ ShaderInfo VkShaderInfo(const void* internal, ShaderHandle handle) noexcept
     {
         info.valid = true;
         info.stage = slot->stage;
-        info.format = ShaderBytecodeFormat::SpirV;
+        info.format = slot->format;
         info.codeSize = slot->codeSize;
     }
     return info;
@@ -935,60 +1068,6 @@ ObjectNameInfo VkObjectName(const void* internal, const ObjectRef& object) noexc
     return info;
 }
 
-// ---- Features that are not implemented ------------------------------------
-
-Status<Error> VkCreateTimestampQueryHeap(void*, const TimestampQueryHeapDesc&,
-                                         TimestampQueryHeapHandle*) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: timestamp queries are not implemented yet");
-}
-Status<Error> VkDestroyTimestampQueryHeap(void*, TimestampQueryHeapHandle) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: timestamp queries are not implemented yet");
-}
-Status<Error> VkReadTimestamps(void*, TimestampQueryHeapHandle, u32, u32, FenceHandle, u64,
-                               memory::Span<u64>) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: timestamp queries are not implemented yet");
-}
-u64 VkTimestampFrequency(const void*, QueueKind) noexcept
-{
-    return 0;
-}
-Status<Error> VkCreateTileHeap(void*, const TileHeapDesc&, TileHeapHandle*) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: reserved textures are not implemented yet");
-}
-Status<Error> VkDestroyTileHeap(void*, TileHeapHandle) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: reserved textures are not implemented yet");
-}
-TextureTiling VkTextureTiling(const void*, TextureHandle) noexcept
-{
-    return TextureTiling{};
-}
-Status<Error> VkUpdateTileMappings(void*, QueueKind, memory::Span<const TileMapping>) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: reserved textures are not implemented yet");
-}
-TileMappingInfo VkTileMapping(const void*, const TileMapping&) noexcept
-{
-    return TileMappingInfo{};
-}
-Status<Error> VkCreatePipelineCache(void*, const PipelineCacheDesc&, PipelineCacheHandle*) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: pipeline caches are not implemented yet");
-}
-Status<Error> VkDestroyPipelineCache(void*, PipelineCacheHandle) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: pipeline caches are not implemented yet");
-}
-Status<Error> VkPipelineCacheBytes(const void*, PipelineCacheHandle, memory::Allocator&,
-                                   memory::DynamicArray<memory::Byte>*) noexcept
-{
-    return Err(ErrorCode::Unsupported, "vulkan backend: pipeline caches are not implemented yet");
-}
-
 [[nodiscard]] DeviceInterface BuildInterface() noexcept
 {
     DeviceInterface table{};
@@ -1057,21 +1136,38 @@ Status<Error> VkPipelineCacheBytes(const void*, PipelineCacheHandle, memory::All
     limits.maxTexture3D = info.maxImageDimension3D;
     limits.maxTextureCube = info.maxImageDimensionCube;
     limits.maxTextureArrayLayers = info.maxImageArrayLayers;
-    // The remaining limits are the values the specification guarantees every
-    // device meets. Reading the device's real figures needs the full
-    // `VkPhysicalDeviceLimits` layout; until it is declared the report is a safe
-    // lower bound, never an overclaim.
-    limits.maxColorAttachments = 4;
-    limits.maxVertexBuffers = 16;
-    limits.maxVertexAttributes = 16;
+    // The device's own limits, clamped to what the RHI's fixed-size tables hold.
+    const auto clamp = [](u32 value, u32 ceiling) noexcept
+    { return value < ceiling ? value : ceiling; };
+    limits.maxColorAttachments = clamp(info.maxColorAttachments, kMaxColorAttachments);
+    limits.maxVertexBuffers = clamp(info.maxVertexInputBindings, kMaxVertexBindings);
+    limits.maxVertexAttributes = clamp(info.maxVertexInputAttributes, 32);
     limits.maxBindGroups = kBindGroupSlotCount;
     limits.maxBindingsPerGroup = 64;
-    limits.maxBindingArrayElements = 1024;
-    limits.maxSamplerArrayElements = 1024;
+    // A binding array of any resource type must fit, so the limit is the smallest
+    // across every type. Each type counts at the limit of the binding it becomes
+    // (VkCreateBindGroupLayout): the update-after-bind limit where the device
+    // supports it, the ordinary per-stage limit where it does not.
+    const auto smaller = [](u32 a, u32 b) noexcept { return a < b ? a : b; };
+    const u32 imageArray = info.uabPerStageSampledImages != 0 ? info.uabPerStageSampledImages
+                                                              : info.maxPerStageSampledImages;
+    const u32 bufferArray =
+        info.uabStorageBuffer ? info.uabPerStageStorageBuffers : info.maxPerStageStorageBuffers;
+    const u32 storageImageArray =
+        info.uabStorageImage ? info.uabPerStageStorageImages : info.maxPerStageStorageImages;
+    const u32 uniformArray =
+        info.uabUniformBuffer ? info.uabPerStageUniformBuffers : info.maxPerStageUniformBuffers;
+    const u32 arrayLimit =
+        smaller(smaller(imageArray, bufferArray), smaller(storageImageArray, uniformArray));
+    limits.maxBindingArrayElements = clamp(arrayLimit, 1U << 20);
+    const u32 samplerArray =
+        info.uabPerStageSamplers != 0 ? info.uabPerStageSamplers : info.maxPerStageSamplers;
+    limits.maxSamplerArrayElements = clamp(samplerArray, 1U << 20);
     limits.maxPushConstantBytes = info.maxPushConstantBytes;
-    limits.maxSamplerAnisotropy = info.samplerAnisotropy ? 16 : 1;
-    limits.minUniformBufferOffsetAlignment = 256;
-    limits.minStorageBufferOffsetAlignment = 256;
+    limits.maxSamplerAnisotropy =
+        info.samplerAnisotropy ? static_cast<u32>(info.maxSamplerAnisotropy) : 1U;
+    limits.minUniformBufferOffsetAlignment = info.minUniformBufferOffsetAlignment;
+    limits.minStorageBufferOffsetAlignment = info.minStorageBufferOffsetAlignment;
     limits.maxBufferBytes = 1ULL << 30;
 
     // Only what this increment can do: the rest is added as each feature lands.
@@ -1096,6 +1192,18 @@ Status<Error> VkPipelineCacheBytes(const void*, PipelineCacheHandle, memory::All
     if (info.samplerAnisotropy)
     {
         features.Add(Feature::AnisotropicFiltering);
+    }
+    if (info.timestampValidBits != 0 && info.timestampComputeAndGraphics &&
+        info.timestampPeriodNs > 0.0F)
+    {
+        features.Add(Feature::TimestampQueries);
+    }
+    // D3D12 tiled resources tier 2's equivalent: 2D sparse residency in the
+    // standard block shape (the RHI's tile grid), bound on the graphics queue.
+    if (info.sparseBinding && info.sparseResidencyImage2D && info.sparseStandard2DBlockShape &&
+        info.sparseQueue[0])
+    {
+        features.Add(Feature::ReservedTextures);
     }
     return capabilities;
 }
@@ -1151,6 +1259,8 @@ Result<DeviceCreation, Error> CreateVulkanDevice(const DeviceDesc& desc,
         return Created::Err(error);
     }
     device->capabilities = BuildCapabilities(device->context.Info());
+    device->sparseAliasing = device->context.Info().sparseResidencyAliased &&
+                             device->capabilities.features.Has(Feature::ReservedTextures);
 
     DeviceCreation creation{};
     creation.interface = VulkanDeviceInterface();

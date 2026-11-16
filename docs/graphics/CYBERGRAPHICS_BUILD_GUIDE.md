@@ -779,14 +779,14 @@ page pool to D3D12 reserved resources, and virtual texturing. See the
 ### Phase 34: Vulkan backend
 
 Tasks
-[ ] Write an ADR deciding whether the Vulkan headers and loader count as "driver headers" under your no-libraries rule (this guide assumes they do, like d3d12.h).
-[ ] Instance, device, queue selection, validation layers, and object naming.
+[x] Write an ADR deciding whether the Vulkan headers and loader count as "driver headers" under your no-libraries rule (this guide assumes they do, like d3d12.h).
+[x] Instance, device, queue selection, validation layers, and object naming.
 [ ] A swapchain through the Win32 surface first, then Linux.
-[ ] Memory allocation using the sub-allocation design from Phase 15.
-[ ] Binding and pipeline mapping: descriptor set layouts, push constants, and dynamic rendering or render passes (decide in the ADR).
-[ ] Barriers translated from your RHI states using the newer synchronization API.
-[ ] Shaders as SPIR-V from your own compiler backend; if you chose option A or B in Phase 16, write the SPIR-V generator before this phase can pass.
-[ ] Every sample and golden-image test running on both D3D12 and Vulkan.
+[x] Memory allocation using the sub-allocation design from Phase 15.
+[x] Binding and pipeline mapping: descriptor set layouts, push constants, and dynamic rendering or render passes (decide in the ADR).
+[x] Barriers translated from your RHI states using the newer synchronization API.
+[x] Shaders as SPIR-V from your own compiler backend; if you chose option A or B in Phase 16, write the SPIR-V generator before this phase can pass.
+[x] Every sample and golden-image test running on both D3D12 and Vulkan.
 Read first: Vulkan specification · Vulkan synchronization guide · Vulkan synchronization examples · LunarG: guide to synchronization validation · SPIR-V specification
 Tips
 • Run the validation layers, including synchronization validation, in every test, and treat messages as failures.
@@ -794,6 +794,14 @@ Tips
 • Keep a table of behavior differences between D3D12 and Vulkan in the design note.
 Write down: docs/design/phase-34-vulkan.md and docs/adr/0004-vulkan-headers.md.
 Done when: every sample and golden-image test passes on both D3D12 and Vulkan using the same renderer code.
+
+Done on Windows: every sample and golden-image test passes on D3D12 and Vulkan with
+the same renderer code on an Intel HD Graphics 530 (190/190 tests, each GPU test and
+RHI sample run on both backends). The Vulkan backend compiles the renderer's HLSL to
+SPIR-V itself (ADR 0030); the founding decisions are ADR 0029 rather than the 0004
+this guide names. Open: the Linux swapchain (the platform layer has no Linux window
+backend yet) and a run with the Khronos validation layer, which is not installed on
+the development machine. See the [Phase 34 design](../design/phase-34-vulkan.md).
 
 ### Phase 35: Metal and other backends
 

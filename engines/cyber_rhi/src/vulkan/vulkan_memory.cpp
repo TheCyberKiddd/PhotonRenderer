@@ -661,6 +661,92 @@ Status<Error> VulkanMemoryAllocator::CreateImage(const VulkanImageDesc& desc,
     return Status<Error>::Ok();
 }
 
+Status<Error>
+VulkanMemoryAllocator::CreateSparseImage(const VulkanImageDesc& desc, bool aliased,
+                                         VulkanImage* out,
+                                         vk::MemoryRequirements* requirements) noexcept
+{
+    if (out == nullptr || requirements == nullptr || m_device == nullptr)
+    {
+        return Status<Error>::Err(
+            Error{ErrorCode::InvalidArgument, "memory allocator is not initialized"});
+    }
+    if (desc.width == 0 || desc.height == 0 || desc.mipLevels == 0 ||
+        desc.format == vk::Format::Undefined || desc.usage == 0)
+    {
+        return Status<Error>::Err(
+            Error{ErrorCode::InvalidArgument, "an image needs extent, mips, format, usage"});
+    }
+    vk::ImageCreateInfo info{};
+    info.imageType = desc.type;
+    info.format = desc.format;
+    info.extent = vk::Extent3D{desc.width, desc.height, desc.depth};
+    info.mipLevels = desc.mipLevels;
+    info.arrayLayers = desc.arrayLayers;
+    info.tiling = vk::ImageTiling::Optimal;
+    info.usage = desc.usage;
+    info.samples = 1;
+    if (m_sharedFamilyCount > 1)
+    {
+        info.sharingMode = vk::SharingMode::Concurrent;
+        info.queueFamilyIndexCount = m_sharedFamilyCount;
+        info.pQueueFamilyIndices = m_sharedFamilies;
+    }
+    info.flags = vk::kImageCreateSparseBinding | vk::kImageCreateSparseResidency | 0x8U |
+                 (aliased ? 0x4U : 0U);
+    vk::Image image = 0;
+    if (m_ext.createImage(m_device, &info, nullptr, &image) != vk::Result::Success)
+    {
+        return Status<Error>::Err(
+            Error{ErrorCode::Unsupported, "vkCreateImage failed for a sparse-resident image"});
+    }
+    m_ext.getImageMemoryRequirements(m_device, image, requirements);
+    out->image = image;
+    out->block = VulkanMemoryBlock{};
+    out->desc = desc;
+    return Status<Error>::Ok();
+}
+
+Status<Error> VulkanMemoryAllocator::AllocateRaw(u64 sizeBytes, u32 typeBits, vk::DeviceMemory* out,
+                                                 u32* memoryType) noexcept
+{
+    if (out == nullptr || memoryType == nullptr || m_device == nullptr || sizeBytes == 0)
+    {
+        return Status<Error>::Err(
+            Error{ErrorCode::InvalidArgument, "a raw allocation needs a size and outputs"});
+    }
+    if (!SelectMemoryType(VulkanMemoryClass::DeviceLocal, typeBits, memoryType))
+    {
+        return Status<Error>::Err(
+            Error{ErrorCode::Unsupported, "no device-local memory type serves the request"});
+    }
+    if (m_liveDriverAllocations >= kMaxDriverAllocations)
+    {
+        return Status<Error>::Err(
+            Error{ErrorCode::OutOfRange, "the driver allocation cap has been reached"});
+    }
+    vk::MemoryAllocateInfo info{};
+    info.allocationSize = sizeBytes;
+    info.memoryTypeIndex = *memoryType;
+    vk::DeviceMemory memory = 0;
+    if (m_functions.allocateMemory(m_device, &info, nullptr, &memory) != vk::Result::Success)
+    {
+        return Status<Error>::Err(Error{ErrorCode::OutOfRange, "vkAllocateMemory failed"});
+    }
+    ++m_liveDriverAllocations;
+    *out = memory;
+    return Status<Error>::Ok();
+}
+
+void VulkanMemoryAllocator::FreeRaw(vk::DeviceMemory memory) noexcept
+{
+    if (m_device != nullptr && memory != 0)
+    {
+        m_functions.freeMemory(m_device, memory, nullptr);
+        --m_liveDriverAllocations;
+    }
+}
+
 void VulkanMemoryAllocator::DestroyImage(VulkanImage& image) noexcept
 {
     if (m_device == nullptr || image.image == 0)

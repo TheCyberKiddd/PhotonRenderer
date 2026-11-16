@@ -8,6 +8,16 @@ semantic versioning once a public API exists.
 
 ### Added
 
+- Phase 34 complete (Windows): every sample and golden-image test passes on D3D12 and
+  Vulkan with the same renderer code. The Vulkan backend compiles HLSL source to SPIR-V
+  itself (`src/vulkan/hlsl_spirv*`, ADR 0030), per pipeline against its layout, linking
+  stages by semantic. Timestamps, pipeline caches and reserved (sparse) textures are
+  implemented on Vulkan; wireframe and disabled depth clip work where the device has the
+  features; limits are read from the device; binding arrays are update-after-bind.
+  `cyber/rhi/backend_select.h` picks a backend from `--backend=` or `CYBER_RHI_BACKEND`;
+  renderer GPU tests, `rhi_timestamps` and `backend_compare` gain `_vulkan` runs, and
+  every RHI sample runs on both backends under CTest (exit code 77 skips). New tests:
+  `rhi_hlsl_spirv`, `gpu_parity_pipeline_cache_round_trip`.
 - Phase 34 increment 7: the rest of the Vulkan RHI `DeviceInterface`. Bind groups, pipeline
   layouts, graphics and compute pipelines, command lists (render passes, draws, indirect
   draws, dispatches, copies, clears, barriers, push constants, debug labels), submission,
@@ -703,6 +713,16 @@ semantic versioning once a public API exists.
 
 ### Fixed
 
+- D3D12 swapchains created with an sRGB format failed (flip-model swapchains take no
+  sRGB buffer format); the buffers now use the linear twin and the back-buffer views
+  keep the sRGB format.
+- Vulkan: an intermittent GPU hang when sampling unwritten texels of an image placed in
+  reused memory (stale Intel compression metadata), fixed by zero-filling new resources;
+  out-of-range copies are refused by name instead of reaching the driver; a failed
+  submit no longer consumes a timeline value nothing will signal.
+- `samples/09_clustered_lighting` failed to load the Vulkan driver (DLL initialisation,
+  error 1114) because `main` kept large arrays on the main-thread stack.
+- `samples/08_frame_streaming` used `fopen_s` unguarded, which does not build on Linux.
 - A reserved texture or tile heap released with a tile-mapping update still
   queued ended the process under the D3D12 debug layer; the backend now waits
   for the queue's mapping updates first, `WaitIdle` drains a queue that only

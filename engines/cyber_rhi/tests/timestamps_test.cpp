@@ -2,6 +2,7 @@
 #include <cyber/core/types.h>
 #include <cyber/memory/heap_allocator.h>
 #include <cyber/memory/span.h>
+#include <cyber/rhi/backend_select.h>
 #include <cyber/rhi/command_list.h>
 #include <cyber/rhi/d3d12.h>
 #include <cyber/rhi/device.h>
@@ -19,9 +20,10 @@ using cyber::memory::Span;
 namespace
 {
 
+// D3D12, or the backend CYBER_RHI_BACKEND names (the `_vulkan` registration).
 [[nodiscard]] bool OpenD3D12Device(Device& out, HeapAllocator& heap) noexcept
 {
-    const Backend* backend = D3D12Backend();
+    const Backend* backend = SelectBackend(0, nullptr, D3D12Backend());
     if (backend == nullptr)
     {
         return false;
@@ -107,7 +109,28 @@ CG_TEST(rhi_timestamps_read_back_after_the_completion_fence)
            static_cast<double>(timestamps[1] - timestamps[0]) * 1000.0 /
                static_cast<double>(frequency));
 
+    // A second frame writes the same queries again: the heap is reusable after a
+    // resolve on every backend (Vulkan resets the queries as part of the resolve).
+    auto secondResult = device.CreateCommandList(listDesc);
+    CG_REQUIRE(static_cast<bool>(secondResult));
+    CommandList second = std::move(secondResult.Value());
+    CG_REQUIRE(second.Begin().IsOk());
+    CG_REQUIRE(second.WriteTimestamp(queryHeap.Value(), 0).IsOk());
+    CG_REQUIRE(second.WriteTimestamp(queryHeap.Value(), 1).IsOk());
+    CG_REQUIRE(second.ResolveTimestamps(queryHeap.Value(), 0, 2).IsOk());
+    CG_REQUIRE(second.End().IsOk());
+    const CommandListHandle secondLists[] = {second.Handle()};
+    signal.value = 2;
+    submit.commandLists = Span<const CommandListHandle>(secondLists, 1);
+    CG_REQUIRE(device.Submit(submit).IsOk());
+    CG_REQUIRE(device.WaitFence(fence, 2).IsOk());
+    const u64 first = timestamps[1];
+    CG_REQUIRE(device.ReadTimestamps(queryHeap.Value(), 0, 2, fence, 2, output).IsOk());
+    CG_EXPECT_TRUE(timestamps[0] >= first);
+    CG_EXPECT_TRUE(timestamps[1] >= timestamps[0]);
+
     list = CommandList{};
+    second = CommandList{};
     CG_EXPECT_TRUE(device.DestroyTimestampQueryHeap(queryHeap.Value()).IsOk());
     CG_EXPECT_TRUE(device.DestroyFence(fence).IsOk());
 }

@@ -72,6 +72,52 @@ struct VulkanDeviceInfo
     u32 maxImageDimensionCube = 4096;
     u32 maxImageArrayLayers = 256;
     bool drawIndirectCount = false;
+    // Optional features, enabled when the hardware has them.
+    bool drawIndirectFirstInstance = false;
+    bool depthClamp = false;
+    bool fillModeNonSolid = false;
+    bool shaderDrawParameters = false;
+    bool storageImageReadWithoutFormat = false;
+    bool storageImageWriteWithoutFormat = false;
+    bool scalarBlockLayout = false;
+    bool hostQueryReset = false;
+    bool sparseBinding = false;
+    bool sparseResidencyImage2D = false;
+    bool sparseResidencyAliased = false;
+    // Whether the graphics, compute and copy queue families take sparse binds.
+    bool sparseQueue[3] = {};
+    bool sparseStandard2DBlockShape = false;
+    bool sparseNonResidentStrict = false;
+    bool shaderResourceResidency = false;
+    // Timestamps: whether every graphics and compute queue writes them, the tick
+    // length, and the valid bits of the graphics family (0 = no timestamps).
+    bool timestampComputeAndGraphics = false;
+    float timestampPeriodNs = 0.0F;
+    u32 timestampValidBits = 0;
+    // Device limits, read from `VkPhysicalDeviceLimits`. Defaults are the
+    // specification's guaranteed values.
+    u32 maxStorageBufferRange = 1U << 27;
+    u32 maxPerStageSamplers = 16;
+    u32 maxPerStageStorageBuffers = 4;
+    u32 maxPerStageUniformBuffers = 12;
+    u32 maxPerStageStorageImages = 4;
+    u32 maxPerStageSampledImages = 16;
+    u32 maxVertexInputAttributes = 16;
+    u32 maxVertexInputBindings = 16;
+    float maxSamplerAnisotropy = 1.0F;
+    u32 minUniformBufferOffsetAlignment = 256;
+    u32 minStorageBufferOffsetAlignment = 256;
+    u32 maxColorAttachments = 4;
+    // Update-after-bind (descriptor indexing) per-stage limits, and which binding
+    // types may be update-after-bind (sampled images and samplers always may).
+    u32 uabPerStageSampledImages = 0;
+    u32 uabPerStageStorageBuffers = 0;
+    u32 uabPerStageSamplers = 0;
+    u32 uabPerStageStorageImages = 0;
+    u32 uabPerStageUniformBuffers = 0;
+    bool uabStorageBuffer = false;
+    bool uabStorageImage = false;
+    bool uabUniformBuffer = false;
 };
 
 struct VulkanContextDesc

@@ -25,6 +25,22 @@ using cyber::memory::kInvalidHandleIndex;
     return Status<Error>::Err(Error{code, message});
 }
 
+// Flip-model swapchains take no sRGB buffer formats: the buffers are created in
+// the linear twin and the back-buffer views (and the reported format) keep the
+// sRGB one, which is how D3D12 presents sRGB.
+[[nodiscard]] DXGI_FORMAT SwapChainBufferFormat(Format format) noexcept
+{
+    switch (format)
+    {
+    case Format::BGRA8UnormSrgb:
+        return ToDxgiFormat(Format::BGRA8Unorm);
+    case Format::RGBA8UnormSrgb:
+        return ToDxgiFormat(Format::RGBA8Unorm);
+    default:
+        return ToDxgiFormat(format);
+    }
+}
+
 [[nodiscard]] u32 NextGeneration(u32 current) noexcept
 {
     const u32 next = current + 1;
@@ -363,7 +379,7 @@ Status<Error> Resize(void* internal, u32 width, u32 height) noexcept
     ReleaseImages(device, slot);
     const UINT flags = slot.allowsTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0U;
     if (FAILED(slot.swapChain->ResizeBuffers(slot.imageCount, width, height,
-                                             ToDxgiFormat(slot.format), flags)))
+                                             SwapChainBufferFormat(slot.format), flags)))
     {
         return StatusError(ErrorCode::Internal, "d3d12 backend: swapchain resize failed");
     }
@@ -454,7 +470,7 @@ Status<Error> D3D12CreateSwapChain(void* internal, const SwapChainDesc& desc, Sw
     }
 
     const HWND window = static_cast<HWND>(const_cast<void*>(desc.surface.nativeWindow));
-    const DXGI_FORMAT format = ToDxgiFormat(desc.format);
+    const DXGI_FORMAT format = SwapChainBufferFormat(desc.format);
     // Tearing is a factory-wide capability and lives on the fifth revision of
     // the factory interface, so it is asked for separately.
     BOOL tearing = FALSE;
