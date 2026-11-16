@@ -902,7 +902,8 @@ int main(int argc, char** argv)
         PrintFailure("WaitIdle benchmark cleanup", idle.Error());
         return 1;
     }
-    const char* adapter = device.Capabilities().adapter.name;
+    const auto capabilities = device.Capabilities();
+    const char* adapter = capabilities.adapter.name;
     if (!WriteReport(adapter, dynamicTimings, bindlessTimings, hasBindless))
     {
         std::printf("Could not write the Phase 19 timing report.\n");
