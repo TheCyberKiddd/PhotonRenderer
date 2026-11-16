@@ -1,4 +1,4 @@
-// The Phase 14 comparison, in one process: the Direct3D 12 backend and the CPU
+// The Phase 14 comparison, in one process: the selected GPU backend and the CPU
 // reference renderer draw the same scene from the same description, and the two
 // images are compared pixel by pixel.
 //
@@ -366,7 +366,7 @@ bool RenderSoftwareTriangle(HeapAllocator& heap, u8* outPixels, const Color& sha
 }
 
 // ---------------------------------------------------------------------------
-// Direct3D 12
+// GPU backend
 // ---------------------------------------------------------------------------
 
 // The vertex format the cube pipeline declares: location 0 is the position,
@@ -422,10 +422,8 @@ constexpr char kTrianglePixelSource[] = "float4 main(float4 position : SV_Positi
     return Span<const Byte>(reinterpret_cast<const Byte*>(text.Data()), text.Size());
 }
 
-[[nodiscard]] bool OpenD3D12Device(Device& out, HeapAllocator& heap) noexcept
+[[nodiscard]] bool OpenGpuDevice(Device& out, HeapAllocator& heap, const Backend* backend) noexcept
 {
-    // D3D12, or the backend CYBER_RHI_BACKEND names (the `_vulkan` registration).
-    const Backend* backend = SelectBackend(0, nullptr, D3D12Backend());
     if (backend == nullptr)
     {
         return false;
@@ -437,8 +435,8 @@ constexpr char kTrianglePixelSource[] = "float4 main(float4 position : SV_Positi
     }
     DeviceDesc desc{};
     desc.backend = backend;
-    // The last adapter is WARP, so the image is the same on every machine.
-    desc.adapterIndex = count - 1;
+    // The last D3D12 adapter is WARP; Vulkan uses the first enumerated adapter.
+    desc.adapterIndex = backend->kind == BackendKind::D3D12 ? count - 1 : 0;
     auto created = Device::Create(desc, heap);
     if (!created)
     {
@@ -540,11 +538,11 @@ struct Target
     return true;
 }
 
-// The colored triangle of the Phase 14 milestone, drawn on Direct3D 12.
-bool RenderD3DTriangle(HeapAllocator& heap, u8* outPixels)
+// The colored triangle of the Phase 14 milestone, drawn on the selected backend.
+bool RenderGpuTriangle(HeapAllocator& heap, u8* outPixels, const Backend* backend)
 {
     Device device;
-    if (!OpenD3D12Device(device, heap))
+    if (!OpenGpuDevice(device, heap, backend))
     {
         return false;
     }
@@ -772,13 +770,13 @@ bool RenderD3DTriangle(HeapAllocator& heap, u8* outPixels)
     return ReadTarget(device, readback.Value(), outPixels);
 }
 
-// The textured cube drawn on Direct3D 12: vertex upload, texture upload, a
+// The textured cube: vertex upload, texture upload, a
 // sampled texture behind a descriptor table, root constants for the transform,
 // and a reverse-Z depth test.
-u32 RenderD3DCube(HeapAllocator& heap, u8* outPixels)
+u32 RenderGpuCube(HeapAllocator& heap, u8* outPixels, const Backend* backend)
 {
     Device device;
-    if (!OpenD3D12Device(device, heap))
+    if (!OpenGpuDevice(device, heap, backend))
     {
         return __LINE__;
     }
@@ -1328,9 +1326,16 @@ CG_TEST(backend_compare_triangle)
     static u8 candidate[kRowBytes * kHeight];
     const Color shading{1.0f, 0.5f, 0.25f, 1.0f};
 
+    const Backend* backend = SelectBackend(0, nullptr, D3D12Backend());
+    CG_REQUIRE(backend != nullptr);
+    if (backend->enumerateAdapters(nullptr, 0) == 0)
+    {
+        CG_SKIP("selected backend has no available adapters");
+    }
+
     CG_REQUIRE(RenderSoftwareTriangle(heap, rendered, shading));
     ResolveBox(rendered, reference);
-    CG_REQUIRE(RenderD3DTriangle(heap, rendered));
+    CG_REQUIRE(RenderGpuTriangle(heap, rendered, backend));
     ResolveBox(rendered, candidate);
     WriteImage("phase-14-triangle-software", reference);
     WriteImage(CandidateName("phase-14-triangle"), candidate);
@@ -1344,15 +1349,22 @@ CG_TEST(backend_compare_textured_cube)
     static u8 reference[kRowBytes * kHeight];
     static u8 candidate[kRowBytes * kHeight];
 
+    const Backend* backend = SelectBackend(0, nullptr, D3D12Backend());
+    CG_REQUIRE(backend != nullptr);
+    if (backend->enumerateAdapters(nullptr, 0) == 0)
+    {
+        CG_SKIP("selected backend has no available adapters");
+    }
+
     CG_REQUIRE(RenderSoftwareCube(heap, rendered));
     ResolveBox(rendered, reference);
-    // The Direct3D 12 half reports the line of the step that stopped it, because
+    // The GPU half reports the line of the step that stopped it, because
     // a boolean would say only that one of a hundred steps failed.
-    const u32 stoppedAt = RenderD3DCube(heap, rendered);
+    const u32 stoppedAt = RenderGpuCube(heap, rendered, backend);
     if (stoppedAt != 0)
     {
         char message[96];
-        std::snprintf(message, sizeof(message), "d3d12 cube stopped at line %u", stoppedAt);
+        std::snprintf(message, sizeof(message), "GPU cube stopped at line %u", stoppedAt);
         CG_FAIL(message);
         return;
     }
